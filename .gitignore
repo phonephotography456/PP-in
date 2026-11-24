@@ -40,3 +40,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local scratch / test artifacts
+/*.sql
+/*.json
+!/package.json
+!/package-lock.json
+!/tsconfig.json
+/cookies.txt
+/homepage.html
+/concurrency_test.ts
