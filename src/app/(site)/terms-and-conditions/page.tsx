@@ -1,6 +1,11 @@
 import { StaticPage } from "@/components/StaticPage";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata = { title: "Terms & Conditions" };
+export const metadata = pageMetadata({
+  path: "/terms-and-conditions",
+  title: "Terms & Conditions",
+  description: "Terms for using PhonePhotography.in, a directory where customers find smartphone photographers and contact them directly.",
+});
 
 // Placeholder wording. Have it reviewed before launch.
 export default function TermsPage() {

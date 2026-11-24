@@ -150,9 +150,9 @@ async function ReviewsTab({ sp }: { sp: Params }) {
           <div key={r.id} className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <p className="text-brand" aria-label={`${r.rating} out of 5`}>{"★".repeat(r.rating)}<span className="text-line">{"★".repeat(5 - r.rating)}</span></p>
-              {r.title && <p className="mt-1 text-sm font-semibold">{r.title}</p>}
-              <p className="mt-1 whitespace-pre-line text-sm">{r.text}</p>
-              <p className="mt-2 text-xs text-muted">Reviewer {r.reviewerUserId.slice(0, 8)} → {r.photographer} · {r.service} · {r.submittedAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
+              {r.title && <p className="mt-1 break-words text-sm font-semibold">{r.title}</p>}
+              {r.text ? <p className="mt-1 whitespace-pre-line break-words text-sm">{r.text}</p> : <p className="mt-1 text-sm text-muted">No written review.</p>}
+              <p className="mt-2 text-xs text-muted">By {r.reviewerName ?? "Customer"}{r.reviewerEmail && ` (${r.reviewerEmail})`} for {r.photographer} · {r.service}{r.level && ` · ${cap(r.level)} package`} · {r.submittedAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
             </div>
             <div className="flex shrink-0 flex-wrap items-start gap-2">
               <StatusBadge status={r.status} />

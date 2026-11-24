@@ -1,8 +1,10 @@
-import { Act, AdminForm, Disclose } from "@/components/AdminForm";
+import { Act, AdminForm, AdminImageField, Disclose } from "@/components/AdminForm";
 import { Field, PageTitle } from "@/components/PanelUI";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getHomepage } from "@/lib/admin-data";
-import { addFeatured, deleteBanner, deleteFeatured, moveFeatured, saveBanner, setFeaturedActive } from "../actions";
+import { HOME_SECTIONS } from "@/lib/home-sections";
+import { LocationLogoPicker } from "@/components/LocationLogoPicker";
+import { addFeatured, deleteBanner, deleteFeatured, moveFeatured, saveBanner, setFeaturedActive, setSectionActive, setServiceOnHome } from "../actions";
 
 export const metadata = { title: "Homepage Management" };
 
@@ -12,7 +14,7 @@ function BannerForm({ b }: { b?: Banner }) {
   return (
     <AdminForm action={saveBanner} submit={b ? "Save banner" : "Add banner"} className="grid gap-4 md:grid-cols-2">
       {b && <input type="hidden" name="id" value={b.id} />}
-      <Field label="Image URL" className="md:col-span-2"><input name="imageUrl" type="url" required maxLength={2000} defaultValue={b?.imageUrl} className="input" placeholder="https://…" /></Field>
+      <Field label="Banner image" className="md:col-span-2"><AdminImageField name="imageUrl" defaultUrl={b?.imageUrl} /></Field>
       <Field label="Heading"><input name="heading" maxLength={200} defaultValue={b?.heading ?? ""} className="input" /></Field>
       <Field label="Link (optional)"><input name="linkUrl" maxLength={2000} defaultValue={b?.linkUrl ?? ""} className="input" placeholder="/search or https://…" /></Field>
       <Field label="Supporting text" className="md:col-span-2"><textarea name="description" maxLength={1000} defaultValue={b?.description ?? ""} className="input min-h-20" /></Field>
@@ -23,12 +25,51 @@ function BannerForm({ b }: { b?: Banner }) {
 }
 
 export default async function HomepageAdmin() {
-  const { banners, featured, options } = await getHomepage();
+  const { banners, featured, options, sections, serviceList, locations } = await getHomepage();
   const available = options.filter((o) => !featured.some((f) => f.photographerId === o.id));
   return (
     <>
       <PageTitle title="Homepage Management" />
       <div className="space-y-6">
+        <section className="card p-5 sm:p-6">
+          <h2 className="font-bold">Homepage sections</h2>
+          <p className="text-sm text-muted">Switch each section on or off. Hidden sections disappear from the homepage straight away.</p>
+          <ul className="mt-4 divide-y divide-line">
+            {HOME_SECTIONS.map((s) => {
+              const on = sections.find((r) => r.key === s.key)?.isActive ?? true;
+              return (
+                <li key={s.key} className="py-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold">{s.label}</p>
+                      <p className="text-xs text-muted">{s.hint}</p>
+                    </div>
+                    <StatusBadge status={on ? "Active" : "Inactive"} />
+                    <Act action={setSectionActive} fields={{ key: s.key, active: on ? "0" : "1" }} label={on ? "Hide" : "Show"} />
+                  </div>
+                  {s.key === "packages" && (
+                    <ul className="mt-3 ml-4 grid gap-x-8 gap-y-2 border-l border-line pl-4 sm:grid-cols-2">
+                      {serviceList.filter((v) => v.status === "active").map((v) => (
+                        <li key={v.id} className="grid grid-cols-[1fr_5rem_4.5rem] items-center gap-3">
+                          <span className="min-w-0 truncate text-sm">{v.name}</span>
+                          <span className="text-center"><StatusBadge status={v.showOnHome ? "Active" : "Inactive"} /></span>
+                          <div className="[&_button]:w-full [&_form]:block"><Act action={setServiceOnHome} fields={{ id: v.id, show: v.showOnHome ? "0" : "1" }} label={v.showOnHome ? "Hide" : "Show"} /></div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+
+        <section className="card p-5 sm:p-6">
+          <h2 className="font-bold">State &amp; city logos</h2>
+          <p className="text-sm text-muted">Pick a state or city and upload its logo. Only places with a logo appear in the homepage strip. Each links to its own page.</p>
+          <LocationLogoPicker states={locations.states} cities={locations.cities} />
+        </section>
+
         <section className="card p-5 sm:p-6">
           <h2 className="font-bold">Banners</h2>
           <p className="text-sm text-muted">Active banners show on the homepage, lowest order first.</p>

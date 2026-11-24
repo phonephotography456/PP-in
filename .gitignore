@@ -50,3 +50,11 @@ next-env.d.ts
 /cookies.txt
 /homepage.html
 /concurrency_test.ts
+
+# more credential dumps (repo root only) and browser captures
+/cookies*
+/login*
+*.har
+
+# local seed credentials (generated passwords)
+/seed-credentials.local.json

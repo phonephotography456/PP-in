@@ -1,18 +1,18 @@
-import type { Level } from "@/lib/mock";
+import type { Level } from "@/lib/format";
 
 // Basic = bronze medal, Standard = silver medal, Premium = gold crown.
 const MEDAL = {
-  Basic: { ribbon: "#E5533D", face: "#CD7F32", ring: "#A9611F" },
-  Standard: { ribbon: "#3B82F6", face: "#C9D1DA", ring: "#8D96A3" },
+  basic: { ribbon: "var(--color-medal-bronze-ribbon)", face: "var(--color-medal-bronze-face)", ring: "var(--color-medal-bronze-ring)" },
+  standard: { ribbon: "var(--color-medal-silver-ribbon)", face: "var(--color-medal-silver-face)", ring: "var(--color-medal-silver-ring)" },
 } as const;
 
 export function LevelIcon({ level, size = 20 }: { level: Level; size?: number }) {
-  if (level === "Premium") {
+  if (level === "premium") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
-        <path d="M2.5 7.5 7.5 12 12 4.5 16.5 12l5-4.5-2 11.5h-15z" fill="#FFC107" stroke="#E09F00" strokeWidth="1.2" strokeLinejoin="round" />
-        <rect x="5" y="17.2" width="14" height="2" rx="1" fill="#E09F00" />
-        <circle cx="2.5" cy="7.5" r="1.4" fill="#E53935" /><circle cx="12" cy="4.5" r="1.4" fill="#E53935" /><circle cx="21.5" cy="7.5" r="1.4" fill="#E53935" />
+        <path d="M2.5 7.5 7.5 12 12 4.5 16.5 12l5-4.5-2 11.5h-15z" fill="var(--color-medal-gold-face)" stroke="var(--color-medal-gold-ring)" strokeWidth="1.2" strokeLinejoin="round" />
+        <rect x="5" y="17.2" width="14" height="2" rx="1" fill="var(--color-medal-gold-ring)" />
+        <circle cx="2.5" cy="7.5" r="1.4" fill="var(--color-medal-gold-gem)" /><circle cx="12" cy="4.5" r="1.4" fill="var(--color-medal-gold-gem)" /><circle cx="21.5" cy="7.5" r="1.4" fill="var(--color-medal-gold-gem)" />
       </svg>
     );
   }

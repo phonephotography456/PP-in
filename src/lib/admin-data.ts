@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, count, desc, eq, gte, ilike, inArray, lt, or, sql, type SQL } from "drizzle-orm";
 import {
-  cities, homepageBanners, homepageFeaturedItems, packageImages, packages, photographerPhones,
+  cities, homepageBanners, homepageFeaturedItems, homepageSections, packageImages, packages, photographerPhones,
   photographers, photographerServices, portfolioImages, portfolioSegments, serviceReviews,
   services, smartphoneBrands, smartphoneModels, states,
 } from "@/db/schema";
@@ -108,18 +108,27 @@ export const getReviews = (f: { photographerId?: string; serviceId?: string; sta
     if (isUuid(f.serviceId)) conds.push(eq(serviceReviews.serviceId, f.serviceId));
     const status = oneOf(REVIEW_STATUSES, f.status);
     if (status) conds.push(eq(serviceReviews.status, status));
-    return tx
+    const rows = await tx
       .select({
         id: serviceReviews.id, rating: serviceReviews.rating, title: serviceReviews.title, text: serviceReviews.reviewText,
         status: serviceReviews.status, submittedAt: serviceReviews.submittedAt, reviewerUserId: serviceReviews.reviewerUserId,
-        photographer: photographers.businessName, service: services.name,
+        reviewerName: serviceReviews.reviewerName, reviewedAt: serviceReviews.reviewedAt,
+        photographer: photographers.businessName, service: services.name, level: packages.level,
       })
       .from(serviceReviews)
       .innerJoin(photographers, eq(photographers.id, serviceReviews.photographerId))
       .innerJoin(services, eq(services.id, serviceReviews.serviceId))
+      .leftJoin(packages, eq(packages.id, serviceReviews.packageId))
       .where(and(...conds))
       .orderBy(desc(serviceReviews.submittedAt))
       .limit(100);
+    // auth.users is not readable by `authenticated`; this admin-only SQL function returns the emails.
+    const ids = [...new Set(rows.map((r) => r.reviewerUserId))];
+    const emails = ids.length
+      ? await tx.execute<{ id: string; email: string }>(sql`select id, email from public.admin_reviewer_emails(array[${sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `)}])`)
+      : [];
+    const emailOf = new Map(Array.from(emails, (e) => [e.id, e.email]));
+    return rows.map((r) => ({ ...r, reviewerEmail: emailOf.get(r.reviewerUserId) ?? null }));
   });
 
 export const getPhotographerOptions = () =>
@@ -146,7 +155,8 @@ export const getMasterData = () =>
       .orderBy(asc(smartphoneBrands.name), asc(smartphoneModels.sortOrder), asc(smartphoneModels.name));
     return { services: svc, brands, models };
   });
-const serviceCols = () => ({ id: services.id, name: services.name, description: services.description, status: services.status, sortOrder: services.sortOrder });
+const serviceCols = () => ({ id: services.id, name: services.name, description: services.description, status: services.status, sortOrder: services.sortOrder,
+  travelStayEnabled: services.travelStayEnabled, locationEnabled: services.locationEnabled, makeupEnabled: services.makeupEnabled, costumeEnabled: services.costumeEnabled, showOnHome: services.showOnHome });
 
 // ---------- Locations ----------
 export const getLocations = () =>
@@ -225,7 +235,16 @@ export const getHomepage = () =>
       .orderBy(asc(homepageFeaturedItems.sortOrder), asc(homepageFeaturedItems.createdAt));
     const options = await tx.select({ id: photographers.id, name: photographers.businessName }).from(photographers)
       .where(eq(photographers.status, "approved")).orderBy(asc(photographers.businessName));
-    return { banners, featured, options };
+    const sections = await tx.select().from(homepageSections);
+    const serviceList = await tx.select({ id: services.id, name: services.name, status: services.status, showOnHome: services.showOnHome })
+      .from(services).orderBy(asc(services.sortOrder), asc(services.name));
+    const stateRows = await tx.select({ id: states.id, name: states.name, imageUrl: states.imageUrl }).from(states)
+      .where(eq(states.isActive, true)).orderBy(asc(states.sortOrder), asc(states.name));
+    const cityRows = await tx.select({ id: cities.id, stateId: cities.stateId, name: cities.name, imageUrl: cities.imageUrl })
+      .from(cities).innerJoin(states, eq(states.id, cities.stateId)).where(and(eq(cities.isActive, true), eq(states.isActive, true)))
+      .orderBy(asc(cities.sortOrder), asc(cities.name));
+    const locations = { states: stateRows, cities: cityRows };
+    return { banners, featured, options, sections, serviceList, locations };
   });
 
 export type { PhotographerStatus, PackageStatus, ReviewStatus, ImageStatus };

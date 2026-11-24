@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { Photo } from "@/components/Photo";
 
-export const metadata = { title: "Earn with your phone camera" };
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata({
+  path: "/earn",
+  title: "Earn with your phone camera",
+  description: "List your smartphone photography services on PhonePhotography.in. Add Basic, Standard and Premium packages and get enquiries on WhatsApp or phone.",
+});
 
 const STEPS = [
   ["Register", "Create your profile with your phone models, services and city. Verify your email."],
@@ -21,22 +27,22 @@ export default function EarnPage() {
   return (
     <>
       <section className="relative">
-        <Photo seed="earn-hero" alt="Photographer shooting with a smartphone" className="h-[300px] sm:h-[380px]" priority />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent">
+        <Photo src={null} alt="Photographer shooting with a smartphone" className="h-[300px] !bg-ink sm:h-[380px]" />
+        <div className="absolute inset-0 bg-gradient-to-t -scrim/65 -scrim/10 to-transparent">
           <div className="container-page flex h-full flex-col justify-end pb-10">
-            <h1 className="max-w-2xl text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl">Earn with your phone camera.</h1>
-            <p className="mt-3 max-w-xl text-white/90 sm:text-lg">List your photography services and get customers across India.</p>
-            <div className="mt-5"><Link href="/photographer/register" className="btn bg-white text-ink hover:bg-surface">Become a Photographer</Link></div>
+            <h1 className="max-w-2xl text-3xl font-extrabold leading-tight tracking-tight text-on-brand sm:text-5xl">Earn with your phone camera.</h1>
+            <p className="mt-3 max-w-xl text-on-brand/90 sm:text-lg">List your photography services and get customers across India.</p>
+            <div className="mt-5"><Link href="/photographer/register" className="btn bg-canvas text-ink hover:bg-surface">Become a Photographer</Link></div>
           </div>
         </div>
       </section>
 
       <section className="container-page pt-14">
-        <h2 className="text-2xl font-bold tracking-tight">How it works</h2>
+        <h2 className="heading-section">How it works</h2>
         <ol className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map(([title, text], i) => (
             <li key={title} className="card p-5">
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-ink text-sm font-bold text-white">{i + 1}</span>
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-ink text-sm font-bold text-on-brand">{i + 1}</span>
               <h3 className="mt-3 font-semibold">{title}</h3>
               <p className="mt-1 text-sm text-muted">{text}</p>
             </li>
@@ -45,7 +51,7 @@ export default function EarnPage() {
       </section>
 
       <section className="container-page pt-14">
-        <h2 className="text-2xl font-bold tracking-tight">Why list here</h2>
+        <h2 className="heading-section">Why list here</h2>
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           {PERKS.map(([title, text]) => (
             <div key={title} className="card p-5">

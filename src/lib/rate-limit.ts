@@ -16,8 +16,17 @@ export function rateLimit(key: string, limit: number, windowMs: number) {
     : { ok: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
 }
 
+/**
+ * Client IP for rate limiting. X-Forwarded-For is client-controlled unless a trusted proxy appends to it, so the
+ * first entry is spoofable (a fresh fake IP per request would bypass every per-IP bucket). Count TRUSTED_PROXY_HOPS
+ * proxies from the right instead (default 1: one reverse proxy/CDN in front). Set 0 when the app is exposed directly:
+ * the header is then ignored.
+ */
 export function clientIp(req: Request) {
-  return req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
+  const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? 1);
+  if (!(hops > 0)) return "direct";
+  const chain = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return chain[chain.length - hops] || req.headers.get("x-real-ip") || "unknown";
 }
 
 const MIN = 60_000;

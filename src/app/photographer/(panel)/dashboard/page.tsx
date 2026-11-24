@@ -44,7 +44,7 @@ export default async function Dashboard() {
           <ul className="mt-5 space-y-2 text-sm">
             {completion.items.map(([label, done, href]) => (
               <li key={label} className="flex items-center gap-2">
-                <span className={`grid h-5 w-5 place-items-center text-xs ${done ? "bg-brand text-white" : "border border-line"}`}>{done && "✓"}</span>
+                <span className={`grid h-5 w-5 place-items-center text-xs ${done ? "bg-brand text-on-brand" : "border border-line"}`}>{done && "✓"}</span>
                 {done ? <span className="text-muted line-through">{label}</span> : <Link href={href} className="hover:underline">{label}</Link>}
               </li>
             ))}

@@ -16,7 +16,7 @@ export default async function AdminPackages({ searchParams }: PageProps<"/admin/
   const [rows, photographers, services] = await Promise.all([getPackages(f), getPhotographerOptions(), getServiceOptions()]);
   return (
     <>
-      <PageTitle title="Packages" sub="Filter and moderate package publication. Publishing needs 3–5 images." />
+      <PageTitle title="Packages" sub="Filter and moderate package publication. Publishing needs a banner image." />
       <form className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <select name="photographer" defaultValue={f.photographerId} className="input">
           <option value="">All photographers</option>

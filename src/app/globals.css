@@ -1,52 +1,94 @@
 @import "tailwindcss";
+@import "../styles/tokens.css";
 
-@theme {
-  --color-brand: #111111;
-  --color-price: #d9232d;
-  --color-brand-dark: #000000;
-  --color-brand-soft: #f2f2f2;
-  --color-ink: #222222;
-  --color-muted: #717171;
-  --color-line: #ebebeb;
-  --color-surface: #f7f7f7;
-  --radius-lg: 2px;
-  --radius-xl: 3px;
-  --radius-2xl: 4px;
-  --radius-3xl: 6px;
-  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
-}
+/* Design tokens live in src/styles/tokens.css. This file only holds base rules and the shared component classes. */
 
 html {
-  font-size: 15px;
+  font-size: var(--font-size-root);
 }
 
 body {
-  background: #fff;
+  background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
 }
 
+/* ---- Buttons ---- */
 @utility btn {
   @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors;
 }
 @utility btn-primary {
-  @apply btn bg-brand text-white hover:bg-brand-dark;
+  @apply btn bg-brand text-on-brand hover:bg-brand-dark;
 }
 @utility btn-outline {
-  @apply btn border border-ink/20 bg-white text-ink hover:border-ink;
+  @apply btn border border-ink/20 bg-canvas text-ink hover:border-ink;
 }
 @utility btn-sm {
   @apply px-3 py-1.5 text-xs;
 }
+
+/* ---- Form controls (inputs, selects, textareas) ---- */
 @utility input {
-  @apply w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-ink focus:ring-2 focus:ring-brand/20;
+  @apply w-full rounded-xl border border-line bg-canvas px-3.5 py-2.5 text-sm outline-none transition focus:border-ink focus:ring-2 focus:ring-brand/20;
 }
 @utility label {
   @apply mb-1.5 block text-xs font-semibold text-ink;
 }
+
+/* ---- Surfaces ---- */
 @utility card {
-  @apply rounded-2xl border border-line bg-white;
+  @apply rounded-2xl border border-line bg-canvas;
 }
+
+/* Glossy frosted panel for the hero filter: blur, top highlight, soft depth. Controls inside get .glass-input. */
+@utility glass {
+  @apply rounded-2xl border border-white/60 backdrop-blur-xl;
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.9) 0%, rgb(255 255 255 / 0.62) 55%, rgb(255 255 255 / 0.78) 100%);
+  box-shadow: 0 18px 40px -12px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.95), inset 0 -1px 0 rgb(0 0 0 / 0.04);
+}
+@utility glass-input {
+  @apply border-white/70 shadow-sm;
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.7));
+  box-shadow: inset 0 1px 0 rgb(255 255 255), 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+/* ---- Badges, chips and status labels ---- */
+@utility badge {
+  @apply rounded-sm bg-surface px-3 py-1 text-xs font-medium;
+}
+@utility badge-accent {
+  @apply rounded-sm bg-brand-soft px-3 py-1 text-xs font-semibold text-brand;
+}
+@utility status {
+  @apply inline-block rounded-sm px-2.5 py-0.5 text-xs font-semibold;
+}
+@utility status-success {
+  @apply bg-success-soft text-success;
+}
+@utility status-warning {
+  @apply bg-warning-soft text-warning;
+}
+@utility status-danger {
+  @apply bg-danger-soft text-danger;
+}
+@utility status-neutral {
+  @apply bg-surface text-muted;
+}
+
+/* ---- Headings ---- */
+@utility heading-page {
+  @apply text-3xl font-extrabold tracking-tight;
+}
+@utility heading-section {
+  @apply text-2xl font-bold tracking-tight;
+}
+
+/* ---- Layout ---- */
 @utility container-page {
-  @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  @apply mx-auto w-full max-w-page px-4 sm:px-6 lg:px-8;
+}
+
+/* ---- Dropdown menu panel ---- */
+@utility menu-panel {
+  @apply rounded-md border border-line bg-canvas py-1 shadow-lg;
 }

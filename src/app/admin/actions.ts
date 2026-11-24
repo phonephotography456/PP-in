@@ -1,13 +1,17 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
+import { redirect } from "next/navigation";
 import { asc, count, eq, sql } from "drizzle-orm";
 import {
-  cities, homepageBanners, homepageFeaturedItems, packages, photographerPhones, photographers,
+  cities, homepageBanners, homepageFeaturedItems, homepageSections, packages, photographerPhones, photographers,
   photographerServices, portfolioImages, serviceReviews, services, smartphoneBrands, smartphoneModels, states,
 } from "@/db/schema";
 import { asAdmin, dbMessage, requireAdmin, slugify } from "@/lib/admin";
-import { IMAGE_STATUSES, PACKAGE_STATUSES, PHOTOGRAPHER_STATUSES, REVIEW_STATUSES, isUuid, oneOf } from "@/lib/admin-data";
+import { IMAGE_STATUSES, PACKAGE_STATUSES, PHOTOGRAPHER_STATUSES, isUuid, oneOf } from "@/lib/admin-data";
+import { isHomeSectionKey } from "@/lib/home-sections";
+import { PUBLIC_TAG } from "@/lib/public";
+import { createClient } from "@/lib/supabase/server";
 import { email, str } from "@/lib/validate";
 
 export type Result = { ok?: string; error?: string } | null;
@@ -23,6 +27,7 @@ async function run(work: (tx: Tx) => Promise<string>): Promise<Result> {
   try {
     const ok = await asAdmin(work);
     revalidatePath("/", "layout");
+    updateTag(PUBLIC_TAG);
     return { ok };
   } catch (e) {
     if (e instanceof Rejected) return { error: e.message };
@@ -42,7 +47,7 @@ const name = (fd: FormData, max: number) => str(fd.get("name"), max) || reject("
 /** http(s) only; blocks javascript:/data: URLs. */
 const httpUrl = (v: FormDataEntryValue | null, required = false) => {
   const s = str(v, 2000);
-  if (!s) return required ? reject("Image URL is required.") : null;
+  if (!s) return required ? reject("Upload an image first.") : null;
   try {
     const u = new URL(s);
     return u.protocol === "https:" || u.protocol === "http:" ? s : reject("URL must start with http:// or https://");
@@ -86,9 +91,16 @@ export async function updatePhotographer(_: Result, fd: FormData) {
 export async function setReviewStatus(_: Result, fd: FormData) {
   const admin = await requireAdmin();
   return run(async (tx) => {
-    const status = oneOf(REVIEW_STATUSES, fd.get("status")) ?? reject("Invalid status.");
-    must(await tx.update(serviceReviews).set({ status, reviewedBy: admin.id, reviewedAt: new Date() })
-      .where(eq(serviceReviews.id, id(fd))).returning({ id: serviceReviews.id }));
+    const status = oneOf(["approved", "rejected"], fd.get("status")) ?? reject("Invalid status.");
+    try {
+      must(await tx.update(serviceReviews).set({ status, reviewedBy: admin.id, reviewedAt: new Date() })
+        .where(eq(serviceReviews.id, id(fd))).returning({ id: serviceReviews.id }));
+    } catch (e) {
+      // service_reviews_one_live_per_reviewer: re-approving an old rejected review while a newer live one exists.
+      const err = e as { code?: string; cause?: { code?: string } };
+      if ((err.cause?.code ?? err.code) === "23505") reject("This customer already has a newer review for this service. Reject that one first.");
+      throw e;
+    }
     return `Review ${status}.`;
   });
 }
@@ -115,8 +127,13 @@ export async function saveMaster(_: Result, fd: FormData) {
     const slug = slugify(n) || reject("Name must contain letters or numbers.");
     if (e === "service") {
       const description = str(fd.get("description"), 1000) || null;
-      if (rowId) must(await tx.update(services).set({ ...base, description }).where(eq(services.id, rowId)).returning({ id: services.id }));
-      else await tx.insert(services).values({ ...base, description, slug });
+      const extras = {
+        travelStayEnabled: fd.get("travelStayEnabled") === "on", locationEnabled: fd.get("locationEnabled") === "on",
+        makeupEnabled: fd.get("makeupEnabled") === "on", costumeEnabled: fd.get("costumeEnabled") === "on",
+      };
+      const showOnHome = fd.get("showOnHome") === "on";
+      if (rowId) must(await tx.update(services).set({ ...base, ...extras, showOnHome, description }).where(eq(services.id, rowId)).returning({ id: services.id }));
+      else await tx.insert(services).values({ ...base, ...extras, showOnHome, description, slug });
     } else if (e === "brand") {
       if (rowId) must(await tx.update(smartphoneBrands).set(base).where(eq(smartphoneBrands.id, rowId)).returning({ id: smartphoneBrands.id }));
       else await tx.insert(smartphoneBrands).values({ ...base, slug: slug.slice(0, 50) });
@@ -222,7 +239,7 @@ export async function setPackageStatus(_: Result, fd: FormData) {
     const [cur] = await tx.select({ status: packages.status }).from(packages).where(eq(packages.id, id(fd))).limit(1);
     if (!cur) reject("Package not found.");
     if (!PACKAGE_MOVES[cur.status]?.includes(status)) reject(`A ${cur.status.replace("_", " ")} package cannot move to ${status.replace("_", " ")}.`);
-    // DB trigger rejects publish unless the package has 3-5 images; message is surfaced by run().
+    // DB trigger rejects publish unless the package has a banner image; message is surfaced by run().
     await tx.update(packages).set({ status }).where(eq(packages.id, id(fd)));
     return `Package ${status}.`;
   });
@@ -257,6 +274,34 @@ export async function deleteBanner(_: Result, fd: FormData) {
   return run(async (tx) => {
     must(await tx.delete(homepageBanners).where(eq(homepageBanners.id, id(fd))).returning({ id: homepageBanners.id }));
     return "Banner deleted.";
+  });
+}
+
+export async function setSectionActive(_: Result, fd: FormData) {
+  return run(async (tx) => {
+    const key = str(fd.get("key"), 40);
+    if (!isHomeSectionKey(key)) reject("Unknown section.");
+    const isActive = fd.get("active") === "1";
+    await tx.insert(homepageSections).values({ key, isActive }).onConflictDoUpdate({ target: homepageSections.key, set: { isActive } });
+    return isActive ? "Section shown." : "Section hidden.";
+  });
+}
+
+export async function saveLocationLogo(_: Result, fd: FormData) {
+  return run(async (tx) => {
+    const imageUrl = httpUrl(fd.get("imageUrl"));
+    const kind = fd.get("kind");
+    if (kind === "state") must(await tx.update(states).set({ imageUrl }).where(eq(states.id, id(fd))).returning({ id: states.id }));
+    else if (kind === "city") must(await tx.update(cities).set({ imageUrl }).where(eq(cities.id, id(fd))).returning({ id: cities.id }));
+    else reject("Choose a state or city.");
+    return imageUrl ? "Logo saved." : "Logo removed.";
+  });
+}
+
+export async function setServiceOnHome(_: Result, fd: FormData) {
+  return run(async (tx) => {
+    must(await tx.update(services).set({ showOnHome: fd.get("show") === "1" }).where(eq(services.id, id(fd))).returning({ id: services.id }));
+    return "Updated.";
   });
 }
 
@@ -303,4 +348,10 @@ export async function moveFeatured(_: Result, fd: FormData) {
     }
     return "Order updated.";
   });
+}
+
+export async function logout() {
+  const supabase = await createClient();
+  await supabase.auth.signOut({ scope: "local" });
+  redirect("/login");
 }

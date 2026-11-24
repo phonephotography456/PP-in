@@ -28,7 +28,7 @@ export function LoginMenu() {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`transition ${open ? "rotate-180" : ""}`} aria-hidden><path d="m6 9 6 6 6-6" /></svg>
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 top-full z-40 mt-2 w-48 overflow-hidden rounded-md border border-line bg-white py-1 shadow-lg">
+        <div role="menu" className="absolute right-0 top-full z-40 mt-2 w-48 overflow-hidden menu-panel">
           <Link role="menuitem" href="/photographer/login" onClick={() => setOpen(false)} className={item}>Photographer Login</Link>
           <Link role="menuitem" href="/reviewer/login" onClick={() => setOpen(false)} className={`${item} border-t border-line`}>User Login</Link>
         </div>

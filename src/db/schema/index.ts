@@ -13,4 +13,5 @@ export * from "./portfolio_segments";
 export * from "./portfolio_images";
 export * from "./homepage_banners";
 export * from "./homepage_featured_items";
+export * from "./homepage_sections";
 export * from "./service_reviews";

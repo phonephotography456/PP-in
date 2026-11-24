@@ -19,5 +19,7 @@ export async function POST(req: Request) {
 
   const role = roleOf(data.user);
   if (role === "photographer") await ensurePhotographerProfile(data.user);
-  return Response.json({ ok: true, role, redirect: role ? ROLE_HOME[role] : "/" });
+  // New photographers land on My Profile, where the photo, logo and banner are added.
+  const redirect = role === "photographer" ? "/photographer/profile" : role ? ROLE_HOME[role] : "/";
+  return Response.json({ ok: true, role, redirect });
 }

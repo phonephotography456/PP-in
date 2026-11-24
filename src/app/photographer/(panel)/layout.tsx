@@ -1,5 +1,6 @@
 import { PanelShell } from "@/components/PanelShell";
 import { RoleGuard } from "@/components/RoleGuard";
+import { logout } from "./actions";
 
 const ITEMS = [
   { href: "/photographer/dashboard", label: "Dashboard" },
@@ -12,7 +13,7 @@ const ITEMS = [
 export default function PhotographerLayout({ children }: LayoutProps<"/photographer">) {
   return (
     <RoleGuard role="photographer" loginPath="/photographer/login">
-      <PanelShell title="Photographer panel" items={ITEMS}>{children}</PanelShell>
+      <PanelShell title="Photographer panel" items={ITEMS} logout={logout}>{children}</PanelShell>
     </RoleGuard>
   );
 }

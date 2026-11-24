@@ -20,7 +20,16 @@ function Actions({ entity, id, status, uses, form }: { entity: Entity; id: strin
   );
 }
 
-function EditForm({ entity, row }: { entity: Entity; row?: { id: string; name: string; sortOrder: number; description?: string | null } }) {
+const SERVICE_EXTRAS = [
+  ["travelStayEnabled", "Travel & Stay"],
+  ["locationEnabled", "Location"],
+  ["makeupEnabled", "Makeup"],
+  ["costumeEnabled", "Costume"],
+] as const;
+
+type ServiceExtras = Record<(typeof SERVICE_EXTRAS)[number][0], boolean> & { showOnHome: boolean };
+
+function EditForm({ entity, row }: { entity: Entity; row?: ({ id: string; name: string; sortOrder: number; description?: string | null } & Partial<ServiceExtras>) }) {
   return (
     <AdminForm action={saveMaster} submit={row ? "Save" : `Add ${entity}`} className="grid gap-3 sm:grid-cols-[1fr_100px_auto] sm:items-end">
       <input type="hidden" name="entity" value={entity} />
@@ -28,7 +37,22 @@ function EditForm({ entity, row }: { entity: Entity; row?: { id: string; name: s
       <Field label="Name"><input name="name" required maxLength={100} defaultValue={row?.name} className="input" /></Field>
       <Field label="Order"><input name="sortOrder" type="number" min={0} max={9999} defaultValue={row?.sortOrder ?? 0} className="input" /></Field>
       {entity === "service" && (
-        <Field label="Description" className="sm:col-span-3"><input name="description" maxLength={1000} defaultValue={row?.description ?? ""} className="input" /></Field>
+        <>
+          <Field label="Description" className="sm:col-span-3"><input name="description" maxLength={1000} defaultValue={row?.description ?? ""} className="input" /></Field>
+          <fieldset className="sm:col-span-3">
+            <legend className="label">Package extras photographers can fill in (shown to customers when set)</legend>
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+              {SERVICE_EXTRAS.map(([name, label]) => (
+                <label key={name} className="flex items-center gap-2">
+                  <input type="checkbox" name={name} defaultChecked={row ? row[name] : true} /> {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label className="flex items-center gap-2 text-sm sm:col-span-3">
+            <input type="checkbox" name="showOnHome" defaultChecked={row?.showOnHome ?? false} /> Show this service&apos;s packages on the home page
+          </label>
+        </>
       )}
     </AdminForm>
   );
@@ -46,10 +70,12 @@ export default async function MasterData() {
             content: (
               <>
                 <div className="card mb-4 p-4"><EditForm entity="service" /></div>
-                <DataTable head={["Service", "Order", "Status", "Actions"]}>
+                <DataTable head={["Service", "Extras on", "On home", "Order", "Status", "Actions"]}>
                   {services.map((s) => (
                     <tr key={s.id}>
                       <td className="font-semibold">{s.name}{s.description && <div className="text-xs font-normal text-muted">{s.description}</div>}</td>
+                      <td className="text-xs text-muted">{SERVICE_EXTRAS.filter(([k]) => s[k]).map(([, l]) => l).join(", ") || "None"}</td>
+                      <td className="text-muted">{s.showOnHome ? "Yes" : "No"}</td>
                       <td className="text-muted">{s.sortOrder}</td>
                       <td><StatusBadge status={s.status} /></td>
                       <td><Actions entity="service" id={s.id} status={s.status} uses={s.uses} form={<EditForm entity="service" row={s} />} /></td>

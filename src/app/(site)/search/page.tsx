@@ -1,30 +1,31 @@
 import { Suspense } from "react";
-import { FilteredPackages } from "@/components/FilteredPackages";
-import { SearchFilters } from "@/components/SearchFilters";
+import { FiltersBar, FiltersFallback } from "@/components/FiltersBar";
+import { PackageResults } from "@/components/Listing";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata = { title: "Search photographers" };
+// Internal search results: every filter combination is a duplicate view of other pages, so never indexed.
+export const metadata = pageMetadata({
+  path: "/search",
+  title: "Search smartphone photographer packages",
+  description: "Search smartphone photographer packages by service, location, phone and price.",
+  index: false,
+});
 
 export default function SearchPage({ searchParams }: PageProps<"/search">) {
   return (
     <>
       <section className="container-page pt-8">
-        <h1 className="text-3xl font-extrabold tracking-tight">Search results</h1>
-        <p className="mt-1 text-muted">Packages grouped by level. Click any card to see the photographer&apos;s full service page.</p>
+        <h1 className="heading-page">Search results</h1>
+        <p className="mt-1 text-muted">Click any package to see the photographer&apos;s full service page.</p>
         <div className="mt-6">
-          <Suspense fallback={<SearchFilters action="/search" />}>
-            <Filters searchParams={searchParams} />
+          <Suspense fallback={<FiltersFallback action="/search" />}>
+            <FiltersBar action="/search" searchParams={searchParams} />
           </Suspense>
         </div>
       </section>
       <Suspense fallback={<div className="container-page pt-12 text-sm text-muted">Loading packages…</div>}>
-        <FilteredPackages searchParams={searchParams} />
+        <PackageResults searchParams={searchParams} />
       </Suspense>
     </>
   );
-}
-
-async function Filters({ searchParams }: { searchParams: PageProps<"/search">["searchParams"] }) {
-  const sp = await searchParams;
-  const v = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
-  return <SearchFilters action="/search" values={{ service: v("service"), state: v("state"), city: v("city"), phone: v("phone"), price: v("price") }} />;
 }

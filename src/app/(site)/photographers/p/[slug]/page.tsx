@@ -1,70 +1,83 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Photo } from "@/components/Photo";
-import { ReadMore } from "@/components/ReadMore";
-import { ReviewsSection } from "@/components/ReviewsSection";
-import { VerifiedRating } from "@/components/VerifiedRating";
-import { ServicePicker } from "@/components/ServicePicker";
+import Link from "next/link";
+import { Suspense } from "react";
+import { JsonLd } from "@/components/JsonLd";
+import { profileJsonLd, serviceJsonLd } from "@/lib/jsonld";
+import { PortfolioGrid, ProfileHeader } from "@/components/ProfileHeader";
+import { Reviews } from "@/components/Reviews";
 import { TierCards } from "@/components/TierCards";
-import { PACKAGES, PHOTOGRAPHERS, SERVICES, stateName } from "@/lib/mock";
+import { serviceHref } from "@/lib/format";
+import { getProfile, getProfileService } from "@/lib/public";
+import { clip, pageMetadata, shareImage } from "@/lib/seo";
 
-export function generateStaticParams() {
-  return PHOTOGRAPHERS.map((p) => ({ slug: p.slug }));
+export async function generateMetadata({ params }: PageProps<"/photographers/p/[slug]">): Promise<Metadata> {
+  const { slug } = await params;
+  const p = await getProfile(slug);
+  if (!p) return { title: "Page not found", robots: { index: false } };
+  const place = [p.city, p.state].filter(Boolean).join(", ");
+  const offers = p.services.map((s) => s.name).join(", ");
+  return pageMetadata({
+    path: `/photographers/p/${p.slug}`,
+    title: `${p.name} – smartphone photographer${place ? ` in ${place}` : ""}`,
+    description: p.about
+      ? clip(p.about)
+      : `${p.name} is a smartphone photographer${place ? ` in ${place}` : ""}${offers ? ` offering ${offers}` : ""}. View packages and portfolio.`,
+    index: p.services.length > 0, // a profile with no published package has nothing to offer a searcher yet
+    image: shareImage(p.banner, p.profilePhoto, p.logo),
+    type: "profile",
+  });
 }
 
-export default async function ProfilePage({ params }: PageProps<"/photographers/p/[slug]">) {
+export default function ProfilePage({ params, searchParams }: PageProps<"/photographers/p/[slug]">) {
+  return (
+    <>
+    <Suspense fallback={<div className="container-page py-16 text-sm text-muted">Loading profile…</div>}>
+      <Profile params={params} searchParams={searchParams} />
+    </Suspense>
+    </>
+  );
+}
+
+async function Profile({ params, searchParams }: Pick<PageProps<"/photographers/p/[slug]">, "params" | "searchParams">) {
   const { slug } = await params;
-  const p = PHOTOGRAPHERS.find((x) => x.slug === slug);
+  const { service } = await searchParams;
+  const p = await getProfile(slug);
   if (!p) notFound();
-  const services = SERVICES.filter((s) => p.services.includes(s.slug));
+  // One page per photographer. The selected service (?service=, default: the first) is shown; the others are tabs.
+  const wanted = typeof service === "string" ? service : undefined;
+  const current = p.services.find((s) => s.slug === wanted) ?? p.services[0];
+  const offer = current ? await getProfileService(slug, current.slug) : null;
+  const contact = { name: p.name, phone: p.phone, whatsapp: p.whatsapp };
 
   return (
     <article>
-      <Photo seed={`${p.slug}-cover`} alt={`${p.name} banner`} className="h-48 sm:h-72" priority />
-
+      <JsonLd data={profileJsonLd(p)} />
+      {offer && <JsonLd data={serviceJsonLd(p, offer)} />}
+      <ProfileHeader p={p} subtitle={current?.name} intro={p.about} />
       <div className="container-page">
-        <header className="-mt-12 sm:-mt-14">
-          <Photo seed={`${p.slug}-profile`} alt={p.name} className="h-24 w-24 rounded-full border-4 border-white sm:h-28 sm:w-28" priority />
-          <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="max-w-2xl">
-              <h1 className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xl font-extrabold tracking-tight sm:text-3xl">
-                {p.name}
-                <VerifiedRating rating={p.rating} reviews={p.reviews} />
-              </h1>
-              <p className="mb-2 text-sm text-muted">{p.city}, {stateName(p.state)} · Shot on {p.phones.join(", ")}</p>
-              <ReadMore text={p.about} />
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <a href="tel:+910000000000" className="btn-primary">Call Now</a>
-              <a href="https://wa.me/910000000000" className="btn-outline">WhatsApp</a>
-            </div>
-          </div>
-        </header>
-
-        {/* Packages: pick one of this photographer's services to see its 3 packages */}
-        <section className="mt-10">
-          <h2 className="text-2xl font-bold tracking-tight">Packages</h2>
-          <div className="mt-5">
-            <ServicePicker
-              options={services.map((s) => ({
-                slug: s.slug,
-                name: s.name,
-                href: `/photographers/p/${p.slug}/${s.slug}`,
-                content: <TierCards pkgs={PACKAGES.filter((k) => k.photographer.slug === p.slug && k.service.slug === s.slug)} />,
-              }))}
-            />
-          </div>
-        </section>
-
-        <section className="mt-14">
-          <h2 className="text-2xl font-bold tracking-tight">Gallery</h2>
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {Array.from({ length: 8 }, (_, i) => (
-              <Photo key={i} seed={`${p.slug}-portfolio-${i}`} alt={`${p.name} gallery ${i + 1}`} className="aspect-square rounded-2xl" />
-            ))}
-          </div>
-        </section>
-
-        <ReviewsSection rating={p.rating} />
+        {p.services.length > 1 && (
+          <nav aria-label="Services" className="mt-8 flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold">Other services</span>
+            {p.services.map((x) => {
+              const active = x.slug === current?.slug;
+              return (
+                <Link key={x.slug} href={serviceHref(p.slug, x.slug)} scroll={false} aria-current={active ? "true" : undefined}
+                  className={`rounded-md border px-4 py-2 text-sm font-semibold ${active ? "border-ink bg-ink text-on-brand" : "border-line hover:border-ink"}`}>{x.name}</Link>
+              );
+            })}
+          </nav>
+        )}
+        {offer ? (
+          <section className="mt-8">
+            <h2 className="heading-section">{offer.service.name} packages</h2>
+            <div className="mt-5"><TierCards pkgs={offer.packages} serviceName={offer.service.name} contact={contact} /></div>
+          </section>
+        ) : (
+          <p className="mt-10 text-sm text-muted">No packages published yet.</p>
+        )}
+        {offer && <PortfolioGrid videos={offer.videos} images={offer.portfolio} title={`${offer.service.name} portfolio`} empty={`No ${offer.service.name.toLowerCase()} portfolio images yet.`} />}
+        {offer && <div className="pb-4"><Reviews photographerId={p.id} serviceId={offer.service.id} targets={offer.reviewTargets} path={serviceHref(p.slug, offer.service.slug)} reviews={offer.reviews} /></div>}
       </div>
     </article>
   );

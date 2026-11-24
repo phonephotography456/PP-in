@@ -1,38 +1,37 @@
-"use client";
 import Link from "next/link";
-import { useState } from "react";
-import { Photo } from "./Photo";
-import { STATES } from "@/lib/mock";
 
 const SHOW_DESKTOP = 9; // + 1 "more" card
 const SHOW_MOBILE = 3; // + 1 "more" card
-const CITIES = STATES.flatMap((s) => s.cities.map((name) => ({ name, state: s.slug })));
 
-// Round city photos with names. Clicking one filters `base` by that state + city.
-export function CityStrip({ base }: { base: string }) {
-  const [all, setAll] = useState(false);
-  const shown = all ? CITIES : CITIES.slice(0, SHOW_DESKTOP);
+export type StripItem = { key: string; name: string; href: string; imageUrl: string | null };
+
+// Round chips (logo, or initial letter when none) for states and cities. Each links to its own page; "More" opens /locations.
+export function CityStrip({ items }: { items: StripItem[] }) {
+  if (!items.length) return null;
   const cell = "text-center sm:w-[96px] sm:shrink-0";
-  const circle = "mx-auto h-16 w-16 rounded-full sm:h-20 sm:w-20";
+  const circle = "mx-auto grid h-16 w-16 place-items-center overflow-hidden rounded-full border border-line bg-surface text-lg font-bold sm:h-20 sm:w-20";
 
   return (
-    <nav aria-label="Browse by city" className={`grid grid-cols-4 gap-3 sm:flex sm:gap-5 sm:pb-2 ${all ? "sm:flex-wrap" : "sm:overflow-x-auto"}`}>
-      {shown.map((c, i) => (
-        <Link
-          key={c.name}
-          href={`${base}?state=${c.state}&city=${encodeURIComponent(c.name)}`}
-          className={`group ${cell} ${!all && i >= SHOW_MOBILE ? "hidden sm:block" : ""}`}
-        >
-          <Photo seed={`city-${c.name}`} alt={c.name} className={`${circle} border border-line transition group-hover:border-ink`} />
+    <nav aria-label="Browse by location" className="grid grid-cols-4 gap-3 sm:flex sm:flex-wrap sm:justify-center sm:gap-5 sm:pb-2">
+      {items.slice(0, SHOW_DESKTOP).map((c, i) => (
+        <Link key={c.key} href={c.href} className={`group ${cell} ${i >= SHOW_MOBILE ? "hidden sm:block" : ""}`}>
+          <span className={`${circle} transition group-hover:border-ink`}>
+            {c.imageUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={c.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+              : c.name.charAt(0)}
+          </span>
           <span className="mt-2 block truncate text-xs font-medium group-hover:underline sm:text-sm">{c.name}</span>
         </Link>
       ))}
-      <button type="button" onClick={() => setAll(!all)} className={cell}>
-        <span className={`${circle} grid place-items-center bg-ink text-sm font-semibold text-white`}>
-          {all ? "Less" : (<><span className="sm:hidden">+{CITIES.length - SHOW_MOBILE}</span><span className="hidden sm:inline">+{CITIES.length - SHOW_DESKTOP}</span></>)}
+      {/* Always shown: opens the full locations page. Count = items not visible at this breakpoint. */}
+      <Link href="/locations" className={cell}>
+        <span className={`${circle} bg-ink text-sm font-semibold text-on-brand`}>
+          <span className="sm:hidden">{items.length > SHOW_MOBILE ? `+${items.length - SHOW_MOBILE}` : "All"}</span>
+          <span className="hidden sm:inline">{items.length > SHOW_DESKTOP ? `+${items.length - SHOW_DESKTOP}` : "All"}</span>
         </span>
-        <span className="mt-2 block truncate text-xs font-medium sm:text-sm">{all ? "Show less" : "More cities"}</span>
-      </button>
+        <span className="mt-2 block truncate text-xs font-medium sm:text-sm">More cities</span>
+      </Link>
     </nav>
   );
 }

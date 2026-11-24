@@ -2,7 +2,7 @@
 // dev server + local Supabase, then removes everything it created.
 // Needs playwright-core (not a project dependency):  npm i playwright-core --prefix <dir>
 //   PW_DIR=<dir>/node_modules/playwright-core node --env-file=.env.local scripts/test-forms.mjs
-// Package/portfolio image rows are inserted by SQL because R2 uploads are not implemented.
+// Package/portfolio image rows are inserted by SQL here; real uploads are covered by scripts/test-uploads.mjs.
 import { createRequire } from "node:module";
 import postgres from "postgres";
 
@@ -272,7 +272,8 @@ try {
     check(`${status}: savePackage create blocked`, /not authorized/i.test(await send(form)) && (await pkgs()).length === 0);
     await go("/photographer/dashboard");
     check(`${status}: dashboard shows status, no public link`, (await page.textContent("main")).toLowerCase().includes(status) && (await page.locator("a:has-text('View public profile')").count()) === 0);
-    const pub = await sql.begin(async (tx) => { await tx`set local role anon`; return tx`select 1 from photographers where user_id = ${me.id}`; });
+    const [{ id: phId }] = await sql`select id from photographers where user_id = ${me.id}`; // anon cannot read user_id
+    const pub = await sql.begin(async (tx) => { await tx`set local role anon`; return tx`select 1 from photographers where id = ${phId}`; });
     check(`${status}: not visible to the public`, pub.length === 0);
   }
   await setStatus("pending");

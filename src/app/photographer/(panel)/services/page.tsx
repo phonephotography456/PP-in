@@ -1,10 +1,13 @@
 import Image from "next/image";
-import { Act, Disclose } from "@/components/AdminForm";
+import { Act } from "@/components/AdminForm";
+import { InclusionsField } from "@/components/InclusionsField";
+import { Modal } from "@/components/Modal";
+import { NewPackageForm } from "@/components/NewPackageForm";
 import { PanelForm } from "@/components/PanelForm";
 import { Field, PageTitle } from "@/components/PanelUI";
 import { PanelPrice } from "@/components/PanelPrice";
 import { StatusBadge } from "@/components/StatusBadge";
-import { UploadNotice } from "@/components/UploadNotice";
+import { ImageUpload } from "@/components/ImageUpload";
 import { LEVELS, MAX_PACKAGE_IMAGES, MIN_PACKAGE_IMAGES, getServicesData } from "@/lib/photographer";
 import { addService, deletePackage, deletePackageImage, movePackage, removeService, savePackage } from "../actions";
 
@@ -15,56 +18,88 @@ type Pkg = Data["packages"][number];
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function PackageForm({ serviceId, level, pkg }: { serviceId: string; level: string; pkg?: Pkg }) {
-  return (
-    <PanelForm action={savePackage} submit={pkg ? "Save package" : "Create package"} className="grid gap-3">
+type Svc = Data["mine"][number];
+const EXTRA_FIELDS = [
+  ["travelStayIncluded", "Travel & Stay", "travelStay"],
+  ["locationIncluded", "Location", "location"],
+  ["makeupIncluded", "Makeup", "makeup"],
+  ["costumeIncluded", "Costume", "costume"],
+] as const;
+const triValue = (v: boolean | null) => (v === null ? "" : v ? "yes" : "no");
+
+function PackageForm({ svc, level, pkg }: { svc: Svc; level: string; pkg?: Pkg }) {
+  const serviceId = svc.id;
+  const extras = EXTRA_FIELDS.filter(([, , on]) => svc[on]);
+  const fields = (
+    <>
       <input type="hidden" name="serviceId" value={serviceId} />
       <input type="hidden" name="level" value={level} />
       {pkg && <input type="hidden" name="id" value={pkg.id} />}
-      <Field label="Package name"><input name="name" required maxLength={150} className="input" defaultValue={pkg?.name} /></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Base price (₹)"><input name="basePrice" required inputMode="decimal" className="input" defaultValue={pkg ? Number(pkg.basePrice) : undefined} /></Field>
-        <Field label="Offer price (₹)"><input name="offerPrice" required inputMode="decimal" className="input" defaultValue={pkg ? Number(pkg.offerPrice) : undefined} /></Field>
+        <Field label="Base price (₹)"><input name="basePrice" required inputMode="decimal" placeholder="Min 1999" className="input" defaultValue={pkg ? Number(pkg.basePrice) : undefined} /></Field>
+        <Field label="Offer price (₹)"><input name="offerPrice" required inputMode="decimal" placeholder="Min 1999" className="input" defaultValue={pkg ? Number(pkg.offerPrice) : undefined} /></Field>
       </div>
       <p className="-mt-1 text-xs text-muted">Offer price is what customers pay. Base price is the original price shown struck through.</p>
-      <Field label="Short description (2 lines)"><input name="shortDescription" required maxLength={160} className="input" defaultValue={pkg?.shortDescription ?? ""} /></Field>
-      <Field label="What's included (one per line)"><textarea name="inclusions" required maxLength={4000} className="input min-h-24" defaultValue={pkg?.inclusions ?? ""} /></Field>
+      <Field label="What's included"><InclusionsField defaultValue={pkg?.inclusions ?? ""} /></Field>
+      {extras.length > 0 && (
+        <div>
+          <p className="label">Also covered (optional)</p>
+          <p className="-mt-1 mb-2 text-xs text-muted">Leave as &quot;Not mentioned&quot; for anything that does not apply. Only what you set is shown on the package.</p>
+          <div className="grid grid-cols-2 gap-3">
+            {extras.map(([name, label]) => (
+              <Field key={name} label={label}>
+                <select name={name} className="input" defaultValue={pkg ? triValue(pkg[name]) : ""}>
+                  <option value="">Not mentioned</option>
+                  <option value="yes">Included</option>
+                  <option value="no">Not included</option>
+                </select>
+              </Field>
+            ))}
+          </div>
+        </div>
+      )}
+      <Field label="YouTube video link (optional)"><input name="youtubeUrl" type="url" maxLength={300} placeholder="https://www.youtube.com/watch?v=..." className="input" defaultValue={pkg?.youtubeUrl ?? ""} /></Field>
       <Field label="Detailed description"><textarea name="detailedDescription" maxLength={8000} className="input min-h-24" defaultValue={pkg?.detailedDescription ?? ""} /></Field>
       {pkg?.status === "published" && <p className="text-xs text-muted">Saving changes sends this live package back for review.</p>}
-    </PanelForm>
+    </>
   );
+  return pkg
+    ? <PanelForm action={savePackage} submit="Save package" className="grid gap-3">{fields}</PanelForm>
+    : <NewPackageForm action={savePackage}>{fields}</NewPackageForm>;
 }
 
 function PackageImages({ pkg }: { pkg: Pkg }) {
   const n = pkg.images.length;
   return (
-    <div className="mt-3">
-      <p className="label">Images ({n} of {MIN_PACKAGE_IMAGES}–{MAX_PACKAGE_IMAGES})</p>
+    <div className="mb-5 border-b border-line pb-5">
+      <p className="label">Banner image (required)</p>
+      <p className="-mt-1 mb-2 text-xs text-muted">The main picture on the package card.</p>
       <div className="grid grid-cols-3 gap-2">
-        {pkg.images.map((img) => (
-          <div key={img.id} className="relative aspect-square overflow-hidden bg-surface">
+        {pkg.images.map((img, i) => (
+          <div key={img.id} className={`relative aspect-square overflow-hidden bg-surface ${i === 0 ? "ring-2 ring-ink" : ""}`}>
             <Image src={img.imageUrl} alt={img.altText ?? pkg.name} fill unoptimized className="object-cover" />
+            {i === 0 && <span className="absolute left-1 top-1 bg-ink px-1.5 py-0.5 text-[11px] font-bold text-canvas">Banner</span>}
             {pkg.status !== "inactive" && (
-              <div className="absolute inset-x-0 bottom-0 bg-white/90 p-1">
+              <div className="absolute inset-x-0 bottom-0 bg-canvas/90 p-1">
                 <Act action={deletePackageImage} fields={{ id: img.id }} label="Remove" variant="danger" confirm="Remove this image?" />
               </div>
             )}
           </div>
         ))}
       </div>
-      {n < MIN_PACKAGE_IMAGES && <p className="mt-2 text-xs text-muted">Add at least {MIN_PACKAGE_IMAGES} images before submitting for review.</p>}
-      <UploadNotice className="mt-2" />
+      {n < MIN_PACKAGE_IMAGES && <p className="mt-2 text-xs text-muted">Upload a banner image before submitting for review.</p>}
+      {pkg.status !== "inactive" && <ImageUpload kind="package" targetId={pkg.id} remaining={Math.max(0, MAX_PACKAGE_IMAGES - n)} single label="Upload banner image" />}
     </div>
   );
 }
 
-function Tier({ serviceId, level, pkg }: { serviceId: string; level: string; pkg?: Pkg }) {
+function Tier({ svc, level, pkg }: { svc: Svc; level: string; pkg?: Pkg }) {
   if (!pkg) {
     return (
       <div className="border border-dashed border-line p-4">
         <p className="font-semibold">{cap(level)}</p>
         <p className="mt-1 text-sm text-muted">Not added yet. Optional.</p>
-        <Disclose label="Add package" className="mt-3"><PackageForm serviceId={serviceId} level={level} /></Disclose>
+        <div className="mt-3"><Modal label="Add package" title={`${cap(level)} package`} subtitle={`${svc.name} · fill in the details for this package only`}><PackageForm svc={svc} level={level} /></Modal></div>
       </div>
     );
   }
@@ -76,17 +111,17 @@ function Tier({ serviceId, level, pkg }: { serviceId: string; level: string; pkg
         <StatusBadge status={pkg.status} />
       </div>
       <p className="mt-1 text-sm text-muted">{pkg.name} · <PanelPrice base={pkg.basePrice} offer={pkg.offerPrice} /></p>
-      {pkg.status === "rejected" && <p className="mt-1 text-xs text-red-700">Rejected by admin. Edit, then resubmit.</p>}
+      {pkg.status === "rejected" && <p className="mt-1 text-xs text-danger">Rejected by admin. Edit, then resubmit.</p>}
       {locked && <p className="mt-1 text-xs text-muted">Deactivated by an admin. Kept for history.</p>}
-      <PackageImages pkg={pkg} />
+      {pkg.images.length < MIN_PACKAGE_IMAGES && <p className="mt-1 text-xs text-danger">Banner image missing. Open Edit to upload it.</p>}
       {!locked && (
         <div className="mt-3 flex flex-wrap items-start gap-2">
           {(pkg.status === "draft" || pkg.status === "rejected") && <Act action={movePackage} fields={{ id: pkg.id, move: "submit" }} label="Submit for review" variant="primary" />}
           {pkg.status === "pending_review" && <Act action={movePackage} fields={{ id: pkg.id, move: "withdraw" }} label="Withdraw" />}
-          <Act action={deletePackage} fields={{ id: pkg.id }} label="Delete" variant="danger" confirm="Delete this package and its images?" />
+          <Act action={deletePackage} fields={{ id: pkg.id }} label="Delete" variant="danger" confirm={`Delete your ${cap(level)} package for ${svc.name}?\n\nThis will also permanently delete the banner image and ALL customer reviews associated with this package. This cannot be undone.`} />
         </div>
       )}
-      {!locked && <Disclose label="Edit" className="mt-3"><PackageForm serviceId={serviceId} level={level} pkg={pkg} /></Disclose>}
+      {!locked && <div className="mt-3"><Modal label="Edit" title={`Edit ${cap(level)} package`} subtitle={svc.name}><PackageImages pkg={pkg} /><PackageForm svc={svc} level={level} pkg={pkg} /></Modal></div>}
     </div>
   );
 }
@@ -123,7 +158,7 @@ export default async function ServicesPage() {
                   // Deactivated services keep existing packages but take no new ones.
                   return s.status === "inactive" && !pkg
                     ? <div key={level} className="border border-dashed border-line p-4 text-sm text-muted">{cap(level)} unavailable</div>
-                    : <Tier key={level} serviceId={s.id} level={level} pkg={pkg} />;
+                    : <Tier key={level} svc={s} level={level} pkg={pkg} />;
                 })}
               </div>
             </section>

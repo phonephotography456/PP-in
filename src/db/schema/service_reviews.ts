@@ -12,6 +12,7 @@ import {
 import { sql } from "drizzle-orm";
 import { photographers } from "./photographers";
 import { services } from "./services";
+import { packages } from "./packages";
 import { reviewStatusEnum } from "./enums";
 
 export const serviceReviews = pgTable(
@@ -25,9 +26,12 @@ export const serviceReviews = pgTable(
     serviceId: uuid("service_id")
       .notNull()
       .references(() => services.id, { onDelete: "cascade" }),
+    /** Package reviewed. Null only for reviews written before packages were selectable. Deleting the package deletes its reviews. */
+    packageId: uuid("package_id").references(() => packages.id, { onDelete: "cascade" }),
     rating: integer("rating").notNull(),
     title: varchar("title", { length: 200 }),
-    reviewText: text("review_text").notNull(),
+    reviewText: text("review_text"),
+    reviewerName: varchar("reviewer_name", { length: 150 }),
     status: reviewStatusEnum("status").default("pending").notNull(),
     reviewedBy: uuid("reviewed_by"),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),

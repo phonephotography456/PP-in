@@ -1,12 +1,14 @@
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
+import { getFilterOptions } from "@/lib/public";
 
-export default function SiteLayout({ children }: LayoutProps<"/">) {
+export default async function SiteLayout({ children }: LayoutProps<"/">) {
+  const { services } = await getFilterOptions(); // cached, active services only
   return (
     <>
-      <SiteHeader />
+      <SiteHeader services={services} />
       <div className="flex-1">{children}</div>
-      <SiteFooter />
+      <SiteFooter services={services} />
     </>
   );
 }

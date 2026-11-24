@@ -1,9 +1,10 @@
+import { Act } from "@/components/AdminForm";
+import { ImageUpload } from "@/components/ImageUpload";
 import { PanelForm } from "@/components/PanelForm";
 import { Field, PageTitle } from "@/components/PanelUI";
 import { StateCity } from "@/components/StateCity";
-import { UploadNotice } from "@/components/UploadNotice";
 import { getProfileData } from "@/lib/photographer";
-import { saveProfile } from "../actions";
+import { removeProfileImage, saveProfile } from "../actions";
 
 export const metadata = { title: "My Profile" };
 
@@ -19,18 +20,22 @@ export default async function ProfilePage() {
 
       <section className="card mb-6 p-6">
         <h2 className="font-bold">Images</h2>
+        <p className="mt-1 text-xs text-muted">Images are saved as soon as they upload. Uploading a new one replaces the current image.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          {([["Profile photo", p.profilePhotoUrl], ["Logo (optional)", p.logoUrl], ["Banner", p.bannerUrl]] as const).map(([label, url]) => (
-            <div key={label}>
+          {([["Profile photo", "photo", "profile_photo", p.profilePhotoUrl], ["Logo (optional)", "logo", "logo", p.logoUrl], ["Banner", "banner", "banner", p.bannerUrl]] as const).map(([label, slot, kind, url]) => (
+            <div key={slot}>
               <p className="label">{label}</p>
-              <div className="grid aspect-[4/3] place-items-center overflow-hidden border border-dashed border-line bg-surface text-xs text-muted">
+              <div className={`grid place-items-center overflow-hidden border border-dashed border-line bg-surface text-xs text-muted ${slot === "banner" ? "aspect-[3/1]" : "aspect-square"}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 {url ? <img src={url} alt={label} className="h-full w-full object-cover" /> : "No image"}
+              </div>
+              <div className="flex flex-wrap items-start gap-2">
+                <ImageUpload kind={kind} single label={url ? "Replace" : "Upload"} />
+                {url && <div className="mt-2"><Act action={removeProfileImage} fields={{ slot }} label="Remove" variant="danger" confirm={`Remove your ${label.toLowerCase()}?`} /></div>}
               </div>
             </div>
           ))}
         </div>
-        <UploadNotice />
       </section>
 
       <PanelForm action={saveProfile} submit="Save changes" className="space-y-6">

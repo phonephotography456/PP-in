@@ -1,34 +1,45 @@
-import { Field } from "@/components/PanelUI";
+import { CONTACT } from "@/lib/site";
+import { pageMetadata } from "@/lib/seo";
+import { StaticPage } from "@/components/StaticPage";
 
-export const metadata = { title: "Contact Us" };
+export const metadata = pageMetadata({
+  path: "/contact-us",
+  title: "Contact Us",
+  description: "Contact PhonePhotography.in about listing as a photographer, your account or finding a photographer.",
+});
+
+const WAY = (label: string, value: string | null, href: string | null) => ({ label, value, href });
 
 export default function ContactPage() {
+  const ways = [
+    WAY("Email", CONTACT.email, CONTACT.email && `mailto:${CONTACT.email}`),
+    WAY("Phone", CONTACT.phone, CONTACT.phone && `tel:${CONTACT.phone.replace(/[^\d+]/g, "")}`),
+    WAY("WhatsApp", CONTACT.whatsapp, CONTACT.whatsapp && `https://wa.me/${CONTACT.whatsapp.replace(/\D/g, "")}`),
+  ];
   return (
-    <section className="container-page py-8">
-      <h1 className="text-3xl font-extrabold tracking-tight">Contact Us</h1>
-      <p className="mt-1 text-muted">Questions about listing or finding a photographer? We reply within one working day.</p>
-
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_1.4fr]">
-        <div className="space-y-4">
-          {[
-            ["Email", "hello@phonephotography.in", "mailto:hello@phonephotography.in"],
-            ["Phone", "+91 00000 00000", "tel:+910000000000"],
-            ["WhatsApp", "+91 00000 00000", "https://wa.me/910000000000"],
-          ].map(([label, value, href]) => (
-            <a key={label} href={href} className="card block p-5 transition hover:border-ink">
-              <p className="text-sm text-muted">{label}</p>
-              <p className="mt-0.5 font-semibold">{value}</p>
-            </a>
-          ))}
+    <StaticPage title="Contact Us" intro="Questions about listing as a photographer, your account or finding a photographer?">
+      <section>
+        <h2>Get in touch</h2>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {ways.map(({ label, value, href }) => {
+            const body = (
+              <>
+                <p className="text-sm text-muted">{label}</p>
+                <p className="mt-0.5 break-words font-semibold text-ink">{value ?? <em className="font-normal text-muted">[to be added before launch]</em>}</p>
+              </>
+            );
+            return href ? <a key={label} href={href} className="card block p-5 transition hover:border-ink">{body}</a> : <div key={label} className="card p-5">{body}</div>;
+          })}
         </div>
-
-        <form className="card grid gap-4 p-6 sm:grid-cols-2">
-          <Field label="Name"><input className="input" /></Field>
-          <Field label="Email"><input className="input" type="email" /></Field>
-          <Field label="Message" className="sm:col-span-2"><textarea className="input min-h-32" /></Field>
-          <div className="sm:col-span-2"><button className="btn-primary">Send message</button></div>
-        </form>
-      </div>
-    </section>
+      </section>
+      <section>
+        <h2>Enquiring about a photographer?</h2>
+        <p>Each photographer lists their own phone and WhatsApp number on their profile and service pages. Contact them directly: PhonePhotography.in does not handle bookings or payments.</p>
+      </section>
+      <section>
+        <h2>Want to list your services?</h2>
+        <p>Register as a photographer from the &ldquo;Become a Photographer&rdquo; link in the menu. Our team reviews every profile before it goes live.</p>
+      </section>
+    </StaticPage>
   );
 }

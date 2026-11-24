@@ -10,8 +10,10 @@ import { ensurePhotographerProfile } from "@/lib/photographer-profile";
 
 export const LEVELS = packages.level.enumValues;
 export type Level = (typeof LEVELS)[number];
-export const MAX_PACKAGE_IMAGES = 5;
-export const MIN_PACKAGE_IMAGES = 3;
+/** One banner image per package (older packages may still hold up to 5). */
+export const MAX_PACKAGE_IMAGES = 1;
+export const MIN_PACKAGE_IMAGES = 1;
+export const MAX_PORTFOLIO_IMAGES = 50;
 
 /**
  * Verified photographer identity or redirect. Every panel page and server action starts here;
@@ -97,7 +99,7 @@ export const getProfileData = () =>
 export const getServicesData = () =>
   asPhotographer(async (tx, me) => {
     const mine = await tx
-      .select({ id: services.id, name: services.name, slug: services.slug, status: services.status })
+      .select({ id: services.id, name: services.name, slug: services.slug, status: services.status, travelStay: services.travelStayEnabled, location: services.locationEnabled, makeup: services.makeupEnabled, costume: services.costumeEnabled })
       .from(photographerServices)
       .innerJoin(services, eq(services.id, photographerServices.serviceId))
       .where(eq(photographerServices.photographerId, me.id))

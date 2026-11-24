@@ -6,6 +6,7 @@ import {
   numeric,
   timestamp,
   integer,
+  boolean,
   uniqueIndex,
   index,
   foreignKey,
@@ -35,6 +36,13 @@ export const packages = pgTable(
     shortDescription: varchar("short_description", { length: 300 }),
     inclusions: text("inclusions"),
     detailedDescription: text("detailed_description"),
+    /** Canonical https://www.youtube.com/watch?v=<id>; shown in the service portfolio. */
+    youtubeUrl: varchar("youtube_url", { length: 100 }),
+    /** Optional extras: null = not specified (hidden), true = included, false = not included. */
+    travelStayIncluded: boolean("travel_stay_included"),
+    locationIncluded: boolean("location_included"),
+    makeupIncluded: boolean("makeup_included"),
+    costumeIncluded: boolean("costume_included"),
     status: packageStatusEnum("status").default("draft").notNull(),
     sortOrder: integer("sort_order").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

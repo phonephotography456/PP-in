@@ -22,7 +22,7 @@ export function dbMessage(e: unknown): string {
   if (code === "23505") return "That name or slug already exists.";
   if (code === "23503") return "This record is still referenced elsewhere. Deactivate it instead.";
   if (code === "42501") return "Not authorized.";
-  if (code === "P0001") return msg; // RAISE EXCEPTION from our triggers (e.g. 3-5 package images)
+  if (code === "P0001") return msg; // RAISE EXCEPTION from our triggers (e.g. missing package banner)
   if (code === "22P02") return "Invalid value.";
   return "Something went wrong. Try again.";
 }

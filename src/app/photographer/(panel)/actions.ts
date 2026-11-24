@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, count, eq, inArray } from "drizzle-orm";
 import {
@@ -8,12 +8,15 @@ import {
   portfolioImages, portfolioSegments, services, smartphoneModels, states,
 } from "@/db/schema";
 import { dbMessage, slugify } from "@/lib/admin";
+import { LEVEL_LABEL, youtubeId, youtubeWatchUrl } from "@/lib/format";
 import { isUuid } from "@/lib/admin-data";
 import { requirePhotographer, asPhotographer, completion, LEVELS, type PanelTx } from "@/lib/photographer";
+import { PUBLIC_TAG } from "@/lib/public";
+import { purgeUrls } from "@/lib/r2";
 import { createClient } from "@/lib/supabase/server";
 import { email as emailOf, passwordOk, str } from "@/lib/validate";
 
-export type Result = { ok?: string; error?: string } | null;
+export type Result = { ok?: string; error?: string; id?: string } | null;
 
 class Rejected extends Error {}
 const reject = (msg: string): never => {
@@ -21,12 +24,13 @@ const reject = (msg: string): never => {
 };
 
 /** Every action: verify photographer first, run under RLS, map errors to a safe message, refresh pages. */
-async function run(work: (tx: PanelTx, me: { id: string }) => Promise<string>): Promise<Result> {
+async function run(work: (tx: PanelTx, me: { id: string }) => Promise<string | { ok: string; id: string }>): Promise<Result> {
   try {
-    const ok = await asPhotographer((tx, me) => work(tx, me));
+    const out = await asPhotographer((tx, me) => work(tx, me));
     revalidatePath("/photographer", "layout");
     revalidatePath("/", "layout");
-    return { ok };
+    updateTag(PUBLIC_TAG);
+    return typeof out === "string" ? { ok: out } : out;
   } catch (e) {
     if (e instanceof Rejected) return { error: e.message };
     if ((e as { digest?: string }).digest?.startsWith("NEXT_REDIRECT")) throw e;
@@ -108,6 +112,35 @@ export async function saveProfile(_: Result, fd: FormData) {
   });
 }
 
+const IMAGE_SLOTS = {
+  photo: { profilePhotoUrl: null },
+  logo: { logoUrl: null },
+  banner: { bannerUrl: null },
+} as const;
+const SLOT_URL = { photo: "profilePhotoUrl", logo: "logoUrl", banner: "bannerUrl" } as const;
+
+/** Clears one profile image (photo / logo / banner) of the caller's own profile, then deletes the stored file. */
+export async function removeProfileImage(_: Result, fd: FormData) {
+  const urls: string[] = [];
+  let owner = "";
+  const res = await run(async (tx, me) => {
+    owner = me.id;
+    const slot = fd.get("slot") as keyof typeof IMAGE_SLOTS;
+    if (!Object.hasOwn(IMAGE_SLOTS, slot)) reject("Invalid image.");
+    const [cur] = await tx.select({ status: photographers.status, profilePhotoUrl: photographers.profilePhotoUrl, logoUrl: photographers.logoUrl, bannerUrl: photographers.bannerUrl })
+      .from(photographers).where(eq(photographers.id, me.id)).for("update");
+    if (!cur) reject("Profile not found.");
+    if (cur.status === "rejected" || cur.status === "inactive") reject("This account can no longer change profile images.");
+    const url = cur[SLOT_URL[slot]];
+    if (!url) reject("There is no image to remove.");
+    await tx.update(photographers).set(IMAGE_SLOTS[slot]).where(eq(photographers.id, me.id));
+    urls.push(url!);
+    return "Image removed.";
+  });
+  if (res?.ok) await purgeUrls(urls, owner);
+  return res;
+}
+
 // ---------- Services ----------
 export async function addService(_: Result, fd: FormData) {
   return run(async (tx, me) => {
@@ -130,9 +163,10 @@ export async function removeService(_: Result, fd: FormData) {
 }
 
 // ---------- Packages ----------
+const MIN_PRICE = 1999; // also enforced by DB checks on packages
 const parseMoney = (v: FormDataEntryValue | null, label: string) => {
   const n = Number(str(v, 12).replace(/,/g, ""));
-  return Number.isFinite(n) && n > 0 && n < 100_000_000 ? Math.round(n * 100) / 100 : reject(`Enter ${label} greater than 0.`);
+  return Number.isFinite(n) && n >= MIN_PRICE && n < 100_000_000 ? Math.round(n * 100) / 100 : reject(`Enter ${label} of at least ₹${MIN_PRICE}.`);
 };
 /** Offer (selling) price must be > 0 and no higher than the base (original) price. Also enforced by DB checks. */
 function parsePrices(base: FormDataEntryValue | null, offer: FormDataEntryValue | null) {
@@ -142,18 +176,35 @@ function parsePrices(base: FormDataEntryValue | null, offer: FormDataEntryValue 
   return { basePrice: basePrice.toFixed(2), offerPrice: offerPrice.toFixed(2) };
 }
 
+/** Optional YouTube link, stored as the canonical watch URL. */
+function youtubeField(v: FormDataEntryValue | null) {
+  const raw = str(v, 300);
+  if (!raw) return null;
+  const id = youtubeId(raw);
+  return id ? youtubeWatchUrl(id) : reject("Enter a valid YouTube video link (for example https://www.youtube.com/watch?v=...).");
+}
+
+/** Optional extra: "yes" = included, "no" = not included, anything else = not specified (null). */
+const triState = (v: FormDataEntryValue | null) => (v === "yes" ? true : v === "no" ? false : null);
+
 /** Create (no id) or edit (id) one package. Ownership: service must be the caller's; id must be the caller's. */
 export async function savePackage(_: Result, fd: FormData) {
   return run(async (tx, me) => {
     const level = fd.get("level");
     if (!LEVELS.includes(level as (typeof LEVELS)[number])) reject("Invalid package level.");
     const serviceId = uuid(fd, "serviceId");
+    const [svc] = await tx.select({ travel: services.travelStayEnabled, location: services.locationEnabled, makeup: services.makeupEnabled, costume: services.costumeEnabled }).from(services).where(eq(services.id, serviceId));
+    if (!svc) reject("Service not found.");
     const values = {
-      name: str(fd.get("name"), 150) || reject("Package name is required."),
+      name: LEVEL_LABEL[level as (typeof LEVELS)[number]], // package names are fixed: Basic / Standard / Premium
       ...parsePrices(fd.get("basePrice"), fd.get("offerPrice")),
-      shortDescription: str(fd.get("shortDescription"), 160) || reject("Short description is required."),
       inclusions: str(fd.get("inclusions"), 4000).split("\n").map((l) => l.trim()).filter(Boolean).join("\n") || reject("List what is included."),
       detailedDescription: str(fd.get("detailedDescription"), 8000) || null,
+      youtubeUrl: youtubeField(fd.get("youtubeUrl")),
+      travelStayIncluded: svc.travel ? triState(fd.get("travelStayIncluded")) : null,
+      locationIncluded: svc.location ? triState(fd.get("locationIncluded")) : null,
+      makeupIncluded: svc.makeup ? triState(fd.get("makeupIncluded")) : null,
+      costumeIncluded: svc.costume ? triState(fd.get("costumeIncluded")) : null,
     };
     const id = fd.get("id");
     if (id) {
@@ -161,16 +212,14 @@ export async function savePackage(_: Result, fd: FormData) {
       const [cur] = await tx.select({ status: packages.status }).from(packages).where(and(eq(packages.id, id as string), eq(packages.photographerId, me.id)));
       if (!cur) reject("Package not found.");
       if (cur.status === "inactive") reject("This package was deactivated by an admin.");
-      const rows = await tx.update(packages).set(values).where(and(eq(packages.id, id as string), eq(packages.photographerId, me.id))).returning({ status: packages.status });
+      const rows = await tx.update(packages).set(values).where(and(eq(packages.id, id as string), eq(packages.photographerId, me.id))).returning({ id: packages.id });
       if (!rows.length) reject("Package not found.");
-      return rows[0].status === "pending_review" && cur.status === "published"
-        ? "Saved. Your changes are sent for review and this package is hidden until approved."
-        : "Package saved.";
+      return "Package saved.";
     }
     const [have] = await tx.select({ id: packages.id }).from(packages).where(and(eq(packages.photographerId, me.id), eq(packages.serviceId, serviceId), eq(packages.level, level as (typeof LEVELS)[number])));
     if (have) reject(`You already have a ${level} package for this service.`);
-    await tx.insert(packages).values({ ...values, price: values.offerPrice, photographerId: me.id, serviceId, level: level as (typeof LEVELS)[number], status: "draft" });
-    return "Package created as a draft.";
+    const [created] = await tx.insert(packages).values({ ...values, price: values.offerPrice, photographerId: me.id, serviceId, level: level as (typeof LEVELS)[number], status: "draft" }).returning({ id: packages.id });
+    return { ok: "Package created as a draft.", id: created.id };
   });
 }
 
@@ -179,7 +228,7 @@ const PACKAGE_MOVES = {
   withdraw: { from: ["pending_review"], to: "draft" },
 } as const;
 
-/** submit = draft/rejected → pending_review (DB requires 3–5 images); withdraw = pending_review → draft. Never publishes. */
+/** submit = draft/rejected → pending_review (DB requires a banner image); withdraw = pending_review → draft. Never publishes. */
 export async function movePackage(_: Result, fd: FormData) {
   return run(async (tx, me) => {
     const move = PACKAGE_MOVES[fd.get("move") as keyof typeof PACKAGE_MOVES] ?? reject("Invalid action.");
@@ -193,30 +242,42 @@ export async function movePackage(_: Result, fd: FormData) {
 }
 
 export async function deletePackage(_: Result, fd: FormData) {
-  return run(async (tx, me) => {
+  const urls: string[] = [];
+  let owner = "";
+  const res = await run(async (tx, me) => {
+    owner = me.id;
     const id = uuid(fd, "id");
     const [cur] = await tx.select({ status: packages.status }).from(packages).where(and(eq(packages.id, id), eq(packages.photographerId, me.id)));
     if (!cur) reject("Package not found.");
     if (cur.status === "inactive") reject("Deactivated packages are kept for history and cannot be deleted.");
+    urls.push(...(await tx.select({ u: packageImages.imageUrl }).from(packageImages).where(eq(packageImages.packageId, id))).map((r) => r.u));
     await tx.delete(packages).where(and(eq(packages.id, id), eq(packages.photographerId, me.id)));
     return "Package deleted.";
   });
+  if (res?.ok) await purgeUrls(urls, owner); // files go only after the DB delete committed
+  return res;
 }
 
 export async function deletePackageImage(_: Result, fd: FormData) {
-  return run(async (tx, me) => {
+  const urls: string[] = [];
+  let owner = "";
+  const res = await run(async (tx, me) => {
+    owner = me.id;
     const id = uuid(fd, "id");
     const [img] = await tx
-      .select({ packageId: packageImages.packageId, status: packages.status })
+      .select({ packageId: packageImages.packageId, status: packages.status, url: packageImages.imageUrl })
       .from(packageImages)
       .innerJoin(packages, eq(packages.id, packageImages.packageId))
       .where(and(eq(packageImages.id, id), eq(packages.photographerId, me.id)));
     if (!img) reject("Image not found.");
     if (img.status === "inactive") reject("This package was deactivated by an admin.");
-    // DB trigger moves a published package to pending_review when an image is removed.
+    // DB trigger refuses to remove the last image of a live package.
     await tx.delete(packageImages).where(eq(packageImages.id, id));
-    return img.status === "published" ? "Image removed. This package is back in review and hidden until approved." : "Image removed.";
+    urls.push(img.url);
+    return "Image removed.";
   });
+  if (res?.ok) await purgeUrls(urls, owner);
+  return res;
 }
 
 // ---------- Portfolio ----------
@@ -243,26 +304,42 @@ export async function renameSegment(_: Result, fd: FormData) {
 }
 
 export async function deleteSegment(_: Result, fd: FormData) {
-  return run(async (tx, me) => {
-    const rows = await tx.delete(portfolioSegments).where(and(eq(portfolioSegments.id, uuid(fd, "id")), eq(portfolioSegments.photographerId, me.id))).returning({ id: portfolioSegments.id });
+  const urls: string[] = [];
+  let owner = "";
+  const res = await run(async (tx, me) => {
+    owner = me.id;
+    const id = uuid(fd, "id");
+    const files = await tx.select({ u: portfolioImages.imageUrl }).from(portfolioImages)
+      .innerJoin(portfolioSegments, eq(portfolioSegments.id, portfolioImages.segmentId))
+      .where(and(eq(portfolioSegments.id, id), eq(portfolioSegments.photographerId, me.id)));
+    const rows = await tx.delete(portfolioSegments).where(and(eq(portfolioSegments.id, id), eq(portfolioSegments.photographerId, me.id))).returning({ id: portfolioSegments.id });
     if (!rows.length) reject("Segment not found.");
+    urls.push(...files.map((f) => f.u));
     return "Segment deleted.";
   });
+  if (res?.ok) await purgeUrls(urls, owner);
+  return res;
 }
 
 export async function deletePortfolioImage(_: Result, fd: FormData) {
-  return run(async (tx, me) => {
+  const urls: string[] = [];
+  let owner = "";
+  const res = await run(async (tx, me) => {
+    owner = me.id;
     const id = uuid(fd, "id");
     const [img] = await tx
-      .select({ id: portfolioImages.id, status: portfolioImages.status })
+      .select({ id: portfolioImages.id, status: portfolioImages.status, url: portfolioImages.imageUrl })
       .from(portfolioImages)
       .innerJoin(portfolioSegments, eq(portfolioSegments.id, portfolioImages.segmentId))
       .where(and(eq(portfolioImages.id, id), eq(portfolioSegments.photographerId, me.id)));
     if (!img) reject("Image not found.");
     if (img.status === "inactive") reject("Deactivated images are kept for history.");
     await tx.delete(portfolioImages).where(eq(portfolioImages.id, id));
+    urls.push(img.url);
     return "Image deleted.";
   });
+  if (res?.ok) await purgeUrls(urls, owner);
+  return res;
 }
 
 // ---------- Account ----------

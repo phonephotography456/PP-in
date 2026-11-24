@@ -1,11 +1,11 @@
 import Image from "next/image";
-import { photoUrl } from "@/lib/mock";
 
-// Placeholder photo. `unoptimized` avoids remote image config for design mocks.
-export function Photo({ seed, alt, className = "", priority = false }: { seed: string; alt: string; className?: string; priority?: boolean }) {
+// Real image (R2 URL) or a neutral placeholder block when none is uploaded. `unoptimized`: images are
+// already resized WebP on R2, so no remote image config is needed.
+export function Photo({ src, alt, className = "", priority = false }: { src: string | null | undefined; alt: string; className?: string; priority?: boolean }) {
   return (
     <div className={`relative overflow-hidden bg-surface ${className}`}>
-      <Image src={photoUrl(seed, 1000, 800)} alt={alt} fill unoptimized priority={priority} sizes="(min-width:1024px) 25vw, (min-width:640px) 50vw, 100vw" className="object-cover" />
+      {src ? <Image src={src} alt={alt} fill unoptimized priority={priority} sizes="(min-width:1024px) 25vw, (min-width:640px) 50vw, 100vw" className="object-cover" /> : null}
     </div>
   );
 }

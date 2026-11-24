@@ -23,6 +23,10 @@ export function AuthForm({ mode, portal }: { mode: Mode; portal: Portal }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const base = BASE[portal];
+  // Customers sent here from a service page return to it afterwards. Same-site paths only.
+  const rawNext = params.get("next") ?? "";
+  const next = portal === "customer" && /^\/(?![/\\])/.test(rawNext) ? rawNext : "";
+  const q = next ? `&next=${encodeURIComponent(next)}` : "";
   const c = COPY[mode];
   const needsCode = mode === "verify" || mode === "reset";
   const needsPassword = mode === "login" || mode === "register" || mode === "reset";
@@ -41,8 +45,8 @@ export function AuthForm({ mode, portal }: { mode: Mode; portal: Portal }) {
     setBusy(false);
     if (!res.ok) return setError(json.error ?? "Something went wrong.");
     const email = encodeURIComponent(String(data.email ?? ""));
-    if (mode === "login" || mode === "verify") return router.replace(json.redirect ?? "/");
-    if (mode === "register") return router.push(`${base}/verify?email=${email}`);
+    if (mode === "login" || mode === "verify") return router.replace(next || (json.redirect ?? "/"));
+    if (mode === "register") return router.push(`${base}/verify?email=${email}${q}`);
     if (mode === "forgot") return router.push(`${base}/reset-password?email=${email}`);
     router.push(`${base}/login`);
   }
@@ -50,7 +54,7 @@ export function AuthForm({ mode, portal }: { mode: Mode; portal: Portal }) {
   return (
     <main className="mx-auto w-full max-w-md px-4 py-12">
       <h1 className="text-2xl font-extrabold">{c.title}</h1>
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+      <form method="post" onSubmit={onSubmit} className="mt-6 space-y-4">
         {mode === "register" && (
           <input name="name" required maxLength={150} className="input" aria-label="Name"
             placeholder={portal === "photographer" ? "Business name" : "Your name"} />
@@ -75,11 +79,11 @@ export function AuthForm({ mode, portal }: { mode: Mode; portal: Portal }) {
       <p className="mt-6 space-x-4 text-sm">
         {mode === "login" && portal !== "admin" && (
           <>
-            <Link href={`${base}/register`} className="underline">Create account</Link>
+            <Link href={`${base}/register${q.replace("&", "?")}`} className="underline">Create account</Link>
             <Link href={`${base}/forgot-password`} className="underline">Forgot password?</Link>
           </>
         )}
-        {mode !== "login" && <Link href={`${base}/login`} className="underline">Back to log in</Link>}
+        {mode !== "login" && <Link href={`${base}/login${q.replace("&", "?")}`} className="underline">Back to log in</Link>}
       </p>
     </main>
   );

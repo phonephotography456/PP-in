@@ -3,22 +3,22 @@ import { Act, Disclose } from "@/components/AdminForm";
 import { PanelForm } from "@/components/PanelForm";
 import { Field, PageTitle } from "@/components/PanelUI";
 import { StatusBadge } from "@/components/StatusBadge";
-import { UploadNotice } from "@/components/UploadNotice";
-import { getPortfolioData } from "@/lib/photographer";
+import { ImageUpload } from "@/components/ImageUpload";
+import { MAX_PORTFOLIO_IMAGES, getPortfolioData } from "@/lib/photographer";
 import { createSegment, deletePortfolioImage, deleteSegment, renameSegment } from "../actions";
 
 export const metadata = { title: "My Portfolio" };
 
 export default async function PortfolioPage() {
   const { segments } = await getPortfolioData();
+  const used = segments.reduce((n, s) => n + s.images.filter((i) => i.status !== "inactive").length, 0);
   return (
     <>
-      <PageTitle title="My Portfolio" sub="Group your best work into segments. New or replaced images are reviewed before they appear publicly." />
+      <PageTitle title="My Portfolio" sub={`Group your best work into segments. New or replaced images are reviewed before they appear publicly. ${used} of ${MAX_PORTFOLIO_IMAGES} images used.`} />
 
       <PanelForm action={createSegment} submit="Create segment" className="card mb-6 flex flex-wrap items-end gap-3 p-4">
         <Field label="New segment name"><input name="name" required maxLength={100} className="input" /></Field>
       </PanelForm>
-      <UploadNotice className="mb-6" />
 
       <div className="space-y-6">
         {segments.map((s) => (
@@ -39,6 +39,7 @@ export default async function PortfolioPage() {
                 <Act action={deleteSegment} fields={{ id: s.id }} label="Delete" variant="danger" confirm="Delete this segment and all its images?" />
               </div>
             </div>
+            <ImageUpload kind="portfolio" targetId={s.id} remaining={MAX_PORTFOLIO_IMAGES - used} />
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
               {s.images.map((img) => (
                 <div key={img.id}>

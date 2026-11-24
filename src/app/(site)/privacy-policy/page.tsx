@@ -1,6 +1,12 @@
 import { StaticPage } from "@/components/StaticPage";
+import { ContactEmail } from "@/components/ContactEmail";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata = { title: "Privacy Policy" };
+export const metadata = pageMetadata({
+  path: "/privacy-policy",
+  title: "Privacy Policy",
+  description: "How PhonePhotography.in collects, uses and displays information about photographers and reviewers.",
+});
 
 // Placeholder wording. Have it reviewed before launch.
 export default function PrivacyPage() {
@@ -24,7 +30,7 @@ export default function PrivacyPage() {
       </section>
       <section>
         <h2>Contact</h2>
-        <p>Questions about privacy? Email hello@phonephotography.in.</p>
+        <p>Questions about privacy? Contact us at <ContactEmail />.</p>
       </section>
     </StaticPage>
   );
