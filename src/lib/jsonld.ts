@@ -27,6 +27,8 @@ export function profileJsonLd(p: Profile) {
     description: p.about,
     image: shareImage(p.banner, p.profilePhoto, p.logo),
     areaServed: p.city ? { "@type": "City", name: p.city } : undefined,
+    // Only the city and state shown on the page. No street address or phone is published.
+    address: p.city || p.state ? strip({ "@type": "PostalAddress", addressLocality: p.city, addressRegion: p.state, addressCountry: "IN" }) : undefined,
     sameAs: [p.instagram, p.youtube, p.website].filter((u): u is string => !!u && /^https:\/\//i.test(u)),
   });
 }

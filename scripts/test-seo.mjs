@@ -93,7 +93,7 @@ async function httpTests() {
 
   // ---- HTTP status (real response codes, not page appearance)
   const status = {
-    200: ["/", "/photographers", "/search", "/locations", `/services/${wed}`, `/services/${T}-draftonly`, st, ci, `${st}/${wed}`, `${ci}/${wed}`, `${st}/${T}-empty`, `${st}/${T}-draftonly`, p("A"), `${p("A")}?service=${wed}`, p("E"), "/about-us", "/contact-us", "/privacy-policy", "/terms-and-conditions", "/earn", "/login", "/photographer/login", "/reviewer/login"],
+    200: ["/", "/photographers", "/services", "/og-default.png", "/search", "/locations", `/services/${wed}`, `/services/${T}-draftonly`, st, ci, `${st}/${wed}`, `${ci}/${wed}`, `${st}/${T}-empty`, `${st}/${T}-draftonly`, p("A"), `${p("A")}?service=${wed}`, p("E"), "/about-us", "/contact-us", "/privacy-policy", "/terms-and-conditions", "/earn", "/login", "/photographer/login", "/reviewer/login"],
     404: ["/services/zzs-nope", `/services/${T}-hidden`, "/photographers/zzs-nope", `${st}/zzs-nope`, `${ci}/zzs-nope`, `${ci}/${T}-hidden`, `${st}/${T}-off`, `${st}/${T}-off/${wed}`, `${st}/zzs-nope/${wed}`, "/photographers/zzs-nope/zzs-nope/zzs-nope", `${ci}/${wed}/extra`,
       "/photographers/p/zzs-nope", p("B"), `${p("A")}/${wed}/extra`, "/photographers/p"],
   };
@@ -107,7 +107,7 @@ async function httpTests() {
 
   // ---- metadata per route type
   const routes = {
-    home: "/", photographers: "/photographers", locations: "/locations", service: `/services/${wed}`, state: st, city: ci, stateService: `${st}/${wed}`, cityService: `${ci}/${wed}`,
+    home: "/", photographers: "/photographers", services: "/services", locations: "/locations", service: `/services/${wed}`, state: st, city: ci, stateService: `${st}/${wed}`, cityService: `${ci}/${wed}`,
     profile: p("A"), about: "/about-us", contact: "/contact-us", privacy: "/privacy-policy", terms: "/terms-and-conditions", earn: "/earn",
   };
   const m = {};
@@ -122,7 +122,10 @@ async function httpTests() {
   check("descriptions <= 160 chars", descs.every((d) => d.length <= 160));
   check("dynamic metadata uses DB content", m.profile.title.includes(`ZZS A ${T}`) && m.state.title.includes(`ZZS State ${T}`) && m.cityService.title.includes(`ZZS Wedding ${T}`) && /Compare 3 .* packages shot/.test(m.service.desc), JSON.stringify([m.profile.title, m.service.desc]));
   check("OG image: profile uses the uploaded banner", m.profile.ogImage === img("A-banner") && m.profile.twCard === "summary_large_image", String(m.profile.ogImage));
-  check("OG image: none for pages without a real image", !m.about.ogImage && m.about.twCard === "summary");
+  check("OG image: brand card for pages without a real image", m.about.ogImage === ORIGIN + "/og-default.png" && m.about.twCard === "summary_large_image", JSON.stringify(m.about));
+  const og = await fetch(APP + "/og-default.png");
+  check("OG brand card: 200 image/png", og.status === 200 && og.headers.get("content-type") === "image/png", `${og.status} ${og.headers.get("content-type")}`);
+  check("html lang is en-IN", /<html lang="en-IN"/.test((await get("/about-us")).html));
 
   // ---- indexability decisions
   const nx = async (label, path, canonical, index) => {
@@ -149,6 +152,22 @@ async function httpTests() {
     check(`private not served to anonymous: ${path}`, r.status === 307 && /login/.test(r.headers.get("location") ?? ""), `status ${r.status}`);
   }
 
+  // ---- internal links: only to canonical pages that have listings
+  const stHtml = (await get(st, "Mozilla/5.0")).html;
+  check("state page links its non-empty city and state+service page, not the empty city", stHtml.includes(`href="${ci}"`) && stHtml.includes(`href="${st}/${wed}"`) && !stHtml.includes(`href="${st}/${T}-empty"`) && !stHtml.includes(`href="${st}/${T}-draftonly"`));
+  check("state page intro is factual (live count + lowest price)", /approved smartphone photographers? in ZZS State/.test(stHtml) && stHtml.includes("₹4,500"));
+  const svcHtml = (await get(`/services/${wed}`, "Mozilla/5.0")).html;
+  check("service page links canonical city+service pages, no ?city= filter links", svcHtml.includes(`href="${ci}/${wed}"`) && !/href="\/services\/[^"]*\?[^"]*city=/.test(svcHtml.replaceAll("&amp;", "&")));
+  const ciSvcHtml = (await get(`${ci}/${wed}`, "Mozilla/5.0")).html;
+  check("city+service page links back to the service page and the state", ciSvcHtml.includes(`href="/services/${wed}"`) && ciSvcHtml.includes(`href="${st}"`));
+  check("homepage 'View all' never points unfiltered visitors at /search", !/href="\/search\?service=[^"&]*"/.test((await get("/", "Mozilla/5.0")).html));
+  const hub = (await get("/services", "Mozilla/5.0")).html;
+  // /services is prerendered and cached (refreshed by the admin's updateTag), so it shows the seeded services, not fixtures.
+  const hubLinks = [...new Set([...hub.matchAll(/href="(\/services\/[^"?#]+)"/g)].map((x) => x[1]))];
+  const hubBad = [];
+  for (const l of hubLinks) if ((await get(l)).status !== 200) hubBad.push(l);
+  check(`/services hub links ${hubLinks.length} service pages, all HTTP 200`, hubLinks.length > 0 && !hubBad.length, hubBad.join());
+
   // ---- robots.txt
   const robots = (await get("/robots.txt")).html;
   check("robots.txt: allows /, disallows admin/panel/auth/api, lists sitemap", /User-Agent: \*\s+Allow: \//.test(robots) && ["/admin", "/photographer/", "/reviewer/", "/login", "/api/"].every((d) => robots.includes(`Disallow: ${d}\n`)) && robots.includes(`Sitemap: ${ORIGIN}/sitemap.xml`), robots);
@@ -161,7 +180,7 @@ async function httpTests() {
   check("sitemap: 200 XML", sm.status === 200 && /xml/.test(sm.headers.get("content-type") ?? ""));
   check("sitemap: no duplicate URLs", new Set(locs).size === locs.length);
   check("sitemap: canonical origin, no query/fragment/trailing slash", locs.every((l) => l.startsWith(ORIGIN) && !/[?#]/.test(l) && !l.endsWith("/")));
-  check("sitemap: static pages", locs.includes(ORIGIN) && ["/photographers", "/locations", "/earn", "/about-us", "/contact-us", "/privacy-policy", "/terms-and-conditions"].every(has));
+  check("sitemap: static pages", locs.includes(ORIGIN) && ["/photographers", "/services", "/locations", "/earn", "/about-us", "/contact-us", "/privacy-policy", "/terms-and-conditions"].every(has));
   for (const [label, path] of [["service page", `/services/${wed}`], ["state", st], ["city", ci], ["state+service", `${st}/${wed}`], ["city+service", `${ci}/${wed}`], ["approved profile", p("A")], ["bulk state", bulk]]) check(`sitemap includes ${label}`, has(path));
   const excluded = [
     ["pending photographer profile", p("B")],
@@ -170,6 +189,8 @@ async function httpTests() {
     ["/search", "/search"], ["/login", "/login"], ["/admin/dashboard", "/admin/dashboard"], ["/photographer/login", "/photographer/login"], ["/reviewer/login", "/reviewer/login"],
   ];
   for (const [label, path] of excluded) check(`sitemap excludes ${label}`, !has(path));
+  const lastmod = (path) => sm.html.split("<url>").find((u) => u.includes(`<loc>${ORIGIN + path}</loc>`))?.match(/<lastmod>([^<]*)<\/lastmod>/)?.[1];
+  check("sitemap: lastmod on profile and listing pages (from package/profile updates)", [p("A"), ci, `${ci}/${wed}`, `/services/${wed}`].every((x) => !Number.isNaN(Date.parse(lastmod(x) ?? ""))), [p("A"), ci].map(lastmod).join());
   check("sitemap: no auth/admin/panel URLs", !locs.some((l) => /\/(admin|login|reviewer)(\/|$)|\/photographer\//.test(l)));
   // Every sitemap URL answers 200, is indexable and self-canonical (sampled: all fixture URLs + all seeded URLs).
   const mine = locs.filter((l) => l.includes(T) || !l.includes("zzs"));
@@ -187,40 +208,46 @@ const flat = (blocks) => blocks.flatMap((b) => b["@graph"] ?? [b]);
 
 async function jsonLdTests() {
   const st = `/photographers/${T}-state`, ci = `${st}/${T}-city`, p = (k) => `/photographers/p/${ids[k]}`, wed = `${T}-wedding`;
-  const page = async (path) => { const r = await get(path, "Mozilla/5.0"); return { ...r, blocks: ldBlocks(r.html) }; };
+  // `nodes`: every JSON-LD entity on the page (a block, or each item of a block's @graph).
+  const page = async (path) => { const r = await get(path, "Mozilla/5.0"); const blocks = ldBlocks(r.html); return { ...r, blocks, nodes: flat(blocks) }; };
+  const ofType = (r, t) => r.nodes.filter((x) => x["@type"] === t);
 
   // ---- homepage
   let r = await page("/");
   const n = flat(r.blocks);
-  check("JSON-LD home: valid, WebSite + Organization with canonical url", r.blocks.length === 1 && ["WebSite", "Organization"].every((t) => n.some((x) => x["@type"] === t && x.name === "PhonePhotography.in" && x.url === ORIGIN)), JSON.stringify(r.blocks));
+  check("JSON-LD home: valid, WebSite + Organization with canonical url (+ FAQPage of the visible FAQs)", r.blocks.length <= 2 && r.blocks.every((x) => !x.parseError) && ["WebSite", "Organization"].every((t) => n.some((x) => x["@type"] === t && x.name === "PhonePhotography.in" && x.url === ORIGIN)), JSON.stringify(r.blocks));
   check("JSON-LD home: no invented logo, address, phone or rating", !/"(logo|address|telephone|aggregateRating|sameAs)"/.test(JSON.stringify(r.blocks)));
 
   // ---- profile with full data
   r = await page(p("A"));
-  let b = r.blocks[0];
+  let b = ofType(r, "LocalBusiness")[0];
   const url = ORIGIN + p("A");
-  check("JSON-LD profile: single LocalBusiness with DB values", r.blocks.filter((x) => x["@type"] === "LocalBusiness").length === 1 && b["@type"] === "LocalBusiness" && b["@id"] === url + "#business" && b.url === url && b.name === `ZZS A ${T}` && b.description === `About A ${T}` && b.areaServed?.name === `ZZS City ${T}`, JSON.stringify(b));
+  check("JSON-LD profile: one block, single LocalBusiness with DB values", r.blocks.length === 1 && ofType(r, "LocalBusiness").length === 1 && b["@id"] === url + "#business" && b.url === url && b.name === `ZZS A ${T}` && b.description === `About A ${T}` && b.areaServed?.name === `ZZS City ${T}`, JSON.stringify(b));
   check("JSON-LD profile: real https image, sameAs from visible social link", b.image === img("A-banner") && b.sameAs?.join() === `https://instagram.com/zzs${T}`, JSON.stringify(b));
-  check("JSON-LD profile: no phone, address, rating or review data", !/telephone|address|aggregateRating|review|9876543210/i.test(JSON.stringify(b)));
+  check("JSON-LD profile: address is only the visible city/state", JSON.stringify(b.address) === JSON.stringify({ "@type": "PostalAddress", addressLocality: `ZZS City ${T}`, addressRegion: `ZZS State ${T}`, addressCountry: "IN" }), JSON.stringify(b.address));
+  check("JSON-LD profile: no phone, street address, rating or review data", !/telephone|streetAddress|postalCode|aggregateRating|review|9876543210/i.test(JSON.stringify(b)));
+  const crumb = ofType(r, "BreadcrumbList")[0];
+  check("JSON-LD profile: breadcrumb Photographers > state > city > name", crumb?.itemListElement.map((i) => i.item).join() === [ORIGIN + "/photographers", ORIGIN + st, ORIGIN + ci, url].join() && crumb.itemListElement[3].name === `ZZS A ${T}`, JSON.stringify(crumb));
+  check("profile links to its city+service and city listing pages", r.html.includes(`href="${ci}/${wed}"`) && r.html.includes(`href="${ci}"`));
   check("JSON-LD profile: values match the rendered page", r.html.includes(`ZZS A ${T}`) && r.html.includes(`About A ${T}`));
 
   // ---- profile with incomplete data
   r = await page(p("F"));
-  b = r.blocks[0];
-  check("JSON-LD profile (incomplete data): valid, optional keys omitted, no null/empty values", r.blocks.filter((x) => x["@type"] === "LocalBusiness").length === 1 && b["@type"] === "LocalBusiness" && b.name === `ZZS F ${T}` && !("image" in b) && !("description" in b) && !("sameAs" in b) && !/null|""|\[\]/.test(JSON.stringify(b)), JSON.stringify(b));
+  b = ofType(r, "LocalBusiness")[0];
+  check("JSON-LD profile (incomplete data): valid, optional keys omitted, no null/empty values", ofType(r, "LocalBusiness").length === 1 && b.name === `ZZS F ${T}` && !("image" in b) && !("description" in b) && !("sameAs" in b) && !/null|""|\[\]/.test(JSON.stringify(b)), JSON.stringify(b));
 
   // ---- escaping
   r = await page(p("G"));
-  check("JSON-LD escapes </script> in data (valid JSON, no early tag close)", r.blocks.filter((x) => x["@type"] === "LocalBusiness").length === 1 && r.blocks[0].name === `ZZS </script><b>G ${T}` && !r.html.includes("</script><b>G"), JSON.stringify(r.blocks).slice(0, 500) + " | raw idx " + r.html.indexOf("</script><b>G") + " ctx " + r.html.slice(Math.max(0, r.html.indexOf("</script><b>G") - 80), r.html.indexOf("</script><b>G") + 40));
+  check("JSON-LD escapes </script> in data (valid JSON, no early tag close)", ofType(r, "LocalBusiness").length === 1 && ofType(r, "LocalBusiness")[0].name === `ZZS </script><b>G ${T}` && !r.html.includes("</script><b>G"), JSON.stringify(r.blocks).slice(0, 500) + " | raw idx " + r.html.indexOf("</script><b>G") + " ctx " + r.html.slice(Math.max(0, r.html.indexOf("</script><b>G") - 80), r.html.indexOf("</script><b>G") + 40));
 
   // ---- placeholder images are never emitted
   r = await page("/photographers/p/demo-delhi-frames");
-  check("JSON-LD seed profile: placeholder /seed/ images not shared as photos", r.blocks.filter((x) => x["@type"] === "LocalBusiness").length === 1 && !("image" in r.blocks[0]) && !JSON.stringify(r.blocks).includes("/seed/"), JSON.stringify(r.blocks));
+  check("JSON-LD seed profile: placeholder /seed/ images not shared as photos", ofType(r, "LocalBusiness").length === 1 && !("image" in ofType(r, "LocalBusiness")[0]) && !JSON.stringify(r.blocks).includes("/seed/"), JSON.stringify(r.blocks));
 
   // ---- service page with approved + pending + rejected reviews
   r = await page(`${p("A")}?service=${wed}`);
-  b = r.blocks.find((x) => x["@type"] === "Service");
-  check("JSON-LD service: profile LocalBusiness + one Service, url selects the service, provider references the profile", r.blocks.length === 2 && b?.["@type"] === "Service" && b.url === url + "?service=" + wed && b.provider?.["@id"] === url + "#business" && b.provider.name === `ZZS A ${T}` && b.serviceType === `ZZS Wedding ${T}` && b.name === `ZZS Wedding ${T} by ZZS A ${T}`, JSON.stringify(b));
+  b = ofType(r, "Service")[0];
+  check("JSON-LD service: profile LocalBusiness + one Service, url selects the service, provider references the profile", ofType(r, "LocalBusiness").length === 1 && ofType(r, "Service").length === 1 && b.url === url + "?service=" + wed && b.provider?.["@id"] === url + "#business" && b.provider.name === `ZZS A ${T}` && b.serviceType === `ZZS Wedding ${T}` && b.name === `ZZS Wedding ${T} by ZZS A ${T}`, JSON.stringify(b));
   check("JSON-LD service: offers from the published package only (4500 INR)", b.offers?.length === 1 && b.offers[0].price === 4500 && b.offers[0].priceCurrency === "INR" && !JSON.stringify(b).includes("draftA") && !JSON.stringify(b).includes("hiddenA"), JSON.stringify(b.offers));
   check("JSON-LD service: aggregateRating counts approved reviews only (4 / 1)", b.aggregateRating?.ratingValue === 4 && b.aggregateRating.reviewCount === 1 && b.aggregateRating.bestRating === 5, JSON.stringify(b.aggregateRating));
   const text = r.html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
@@ -228,8 +255,8 @@ async function jsonLdTests() {
   check("JSON-LD service: no private data or review bodies", !/9876543210|Tester|Review (pending|rejected|approved)/.test(JSON.stringify(b)));
   check("JSON-LD service: real https image only", b.image === img(`pkgA${T}`), String(b.image));
   r = await page(`${p("F")}?service=${wed}`);
-  b = r.blocks.find((x) => x["@type"] === "Service");
-  check("JSON-LD service without reviews/images: no aggregateRating, package image only, valid", r.blocks.length === 2 && b["@type"] === "Service" && !("aggregateRating" in b) && b.image === img(`pkgF${T}`), JSON.stringify(b));
+  b = ofType(r, "Service")[0];
+  check("JSON-LD service without reviews/images: no aggregateRating, package image only, valid", ofType(r, "Service").length === 1 && b && !("aggregateRating" in b) && b.image === img(`pkgF${T}`), JSON.stringify(b));
 
   // ---- breadcrumbs mirror the visible trail
   const S = `ZZS State ${T}`, C = `ZZS City ${T}`, W = `ZZS Wedding ${T}`;
@@ -250,7 +277,9 @@ async function jsonLdTests() {
   }
 
   // ---- pages that must not carry structured data
-  for (const path of ["/search", "/about-us", "/contact-us", "/privacy-policy", "/terms-and-conditions", "/earn", "/locations", "/login", "/photographer/login", `/services/${wed}`, "/zzs-nope"]) {
+  r = await page(`/services/${wed}`);
+  check("JSON-LD service page: only a BreadcrumbList Services > service", r.nodes.length === 1 && r.nodes[0].itemListElement?.map((i) => i.item).join() === `${ORIGIN}/services,${ORIGIN}/services/${wed}`, JSON.stringify(r.blocks));
+  for (const path of ["/search", "/about-us", "/contact-us", "/privacy-policy", "/terms-and-conditions", "/earn", "/locations", "/services", "/login", "/photographer/login", "/zzs-nope"]) {
     check(`no JSON-LD on ${path.replaceAll(T, "…")}`, (await page(path)).blocks.length === 0);
   }
   // ---- hidden content never appears in structured data

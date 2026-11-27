@@ -7,6 +7,7 @@ const columns = (services: { slug: string; name: string }[]) => [
     links: [
       ["Home", "/"],
       ["Search", "/search"],
+      ["Services", "/services"],
       ["Locations", "/locations"],
       ["Earn", "/earn"],
       ["Contact", "/contact-us"],

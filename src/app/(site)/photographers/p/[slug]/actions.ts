@@ -10,7 +10,7 @@ import { str } from "@/lib/validate";
 
 export type ReviewResult = { ok?: string; error?: string } | null;
 
-const REVIEW_CONFIRMATION = "Your review has been submitted and is under review. It will be published once approved by our admin team.";
+const REVIEW_CONFIRMATION = "Your review has been submitted successfully and is awaiting admin approval. It will appear publicly once approved.";
 
 /**
  * Customer submits a review. Identity comes from the verified session, never from the form.

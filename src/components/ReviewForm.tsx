@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { submitReview, type ReviewResult } from "@/app/(site)/photographers/p/[slug]/actions";
 import { LEVEL_LABEL } from "@/lib/format";
 import type { ReviewTarget } from "@/lib/public";
@@ -14,7 +14,16 @@ export function ReviewForm({ photographerId, serviceId, targets }: { photographe
   if (result?.ok) return <p role="status" className="card p-5 text-sm font-semibold">{result.ok}</p>;
 
   return (
-    <form action={action} className="card grid gap-4 p-5 sm:p-6">
+    // Submit via onSubmit (as PanelForm does) so React does not reset the fields after an error: the chosen package,
+    // title and text survive a server-side rejection.
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        startTransition(() => action(fd));
+      }}
+      className="card grid gap-4 p-5 sm:p-6"
+    >
       <input type="hidden" name="photographerId" value={photographerId} />
       <div className="grid gap-3 sm:grid-cols-2">
         <div>

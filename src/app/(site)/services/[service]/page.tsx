@@ -3,11 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { CityStrip } from "@/components/CityStrip";
+import { JsonLd } from "@/components/JsonLd";
 import { FiltersBar, FiltersFallback } from "@/components/FiltersBar";
 import { PackageResults, readFilters } from "@/components/Listing";
 import { inr } from "@/lib/format";
-import { PAGE_SIZE, getFilterOptions, resolveService, searchPackages } from "@/lib/public";
-import { isFiltered, pageInRange, pageMetadata, pagePath, shareImage, withPage } from "@/lib/seo";
+import { breadcrumbJsonLd } from "@/lib/jsonld";
+import { PAGE_SIZE, getCoverage, resolveService, searchPackages } from "@/lib/public";
+import { andList, isFiltered, pageInRange, pageMetadata, pagePath, plural, shareImage, withPage } from "@/lib/seo";
 
 export async function generateMetadata({ params, searchParams }: PageProps<"/services/[service]">): Promise<Metadata> {
   const { service } = await params;
@@ -40,16 +42,31 @@ export default function ServicePage({ params, searchParams }: PageProps<"/servic
 
 async function Body({ params, searchParams }: Pick<PageProps<"/services/[service]">, "params" | "searchParams">) {
   const { service } = await params;
-  const [s, options] = await Promise.all([resolveService(service), getFilterOptions()]);
+  const s = await resolveService(service);
   if (!s) notFound();
   const path = `/services/${s.slug}`;
+  const cov = await getCoverage({ service: s.slug });
+  const lower = s.name.toLowerCase();
+  const crumbs = [{ name: "Services", path: "/services" }, { name: s.name, path }];
 
   return (
     <>
+      <JsonLd data={breadcrumbJsonLd(crumbs)} />
+      <nav aria-label="Breadcrumb" className="mb-3 text-sm text-muted">
+        <Link href="/services" className="hover:underline">Services</Link> / {s.name}
+      </nav>
       <h1 className="heading-page">{s.name} photographers</h1>
-      <p className="mt-1 text-muted">{s.description || `Compare ${s.name.toLowerCase()} packages shot on smartphones.`}</p>
+      {s.description && <p className="mt-2 max-w-3xl text-muted">{s.description}</p>}
+      <p className="mt-2 max-w-3xl text-muted">
+        {cov.photographers
+          ? `${plural(cov.photographers, "approved smartphone photographer")} ${cov.photographers === 1 ? "offers" : "offer"} ${lower} packages in ${andList(cov.places.map((c) => c.cityName))}${cov.from ? `, starting from ${inr(cov.from)}` : ""}. Filter by city, phone and budget, then open a package to see the photographer's full portfolio.`
+          : `No ${lower} packages are published yet. Check back soon, or browse other services.`}
+      </p>
 
-      <div className="mt-6"><CityStrip items={options.cities.map((c) => ({ key: `${c.stateSlug}/${c.slug}`, name: c.name, href: `${path}?state=${c.stateSlug}&city=${c.slug}`, imageUrl: null }))} /></div>
+      {/* Canonical city pages for this service (only cities that have it), not filtered duplicates of this page. */}
+      {cov.places.length > 0 && (
+        <div className="mt-6"><CityStrip items={cov.places.map((c) => ({ key: `${c.stateSlug}/${c.citySlug}`, name: c.cityName, href: `/photographers/${c.stateSlug}/${c.citySlug}/${s.slug}`, imageUrl: null }))} /></div>
+      )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[260px_1fr]">
         <aside className="lg:sticky lg:top-24 lg:self-start">

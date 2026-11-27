@@ -375,6 +375,53 @@ export async function countPhotographers(state?: string, city?: string, service?
   });
 }
 
+export type Coverage = Awaited<ReturnType<typeof getCoverage>>;
+
+/**
+ * What is genuinely on offer for a location and/or service: the services available there and the cities that have
+ * them, each with its number of approved photographers and lowest published offer price. Same visibility rules as
+ * the listings (published package, approved photographer, active service/city/state), so every link built from it
+ * points at a page that has listings. Powers internal links and the factual intro text of listing/service pages.
+ */
+export async function getCoverage(f: { state?: string; city?: string; service?: string }) {
+  "use cache";
+  pub();
+  return withAnon(async (tx) => {
+    const rows = await tx
+      .select({
+        photographer: photographers.id, serviceSlug: services.slug, serviceName: services.name,
+        stateSlug: states.slug, stateName: states.name, citySlug: cities.slug, cityName: cities.name,
+        from: sql<string>`min(${packages.offerPrice})`,
+      })
+      .from(packages)
+      .innerJoin(photographers, eq(photographers.id, packages.photographerId))
+      .innerJoin(services, eq(services.id, packages.serviceId))
+      .innerJoin(cities, eq(cities.id, photographers.cityId))
+      .innerJoin(states, eq(states.id, photographers.stateId))
+      .where(packageWhere(f))
+      .groupBy(photographers.id, services.id, states.id, cities.id)
+      .orderBy(asc(services.sortOrder), asc(services.name), asc(states.sortOrder), asc(states.name), asc(cities.sortOrder), asc(cities.name));
+
+    // Group rows by key; per group: distinct photographers and the lowest price.
+    const group = <T,>(keyOf: (r: (typeof rows)[number]) => string, pick: (r: (typeof rows)[number]) => T) => {
+      const m = new Map<string, { item: T; ids: Set<string>; from: number }>();
+      for (const r of rows) {
+        const g = m.get(keyOf(r)) ?? { item: pick(r), ids: new Set<string>(), from: Infinity };
+        g.ids.add(r.photographer);
+        g.from = Math.min(g.from, num(r.from));
+        m.set(keyOf(r), g);
+      }
+      return [...m.values()].map((g) => ({ ...g.item, photographers: g.ids.size, from: g.from }));
+    };
+    return {
+      services: group((r) => r.serviceSlug, (r) => ({ slug: r.serviceSlug, name: r.serviceName })),
+      places: group((r) => `${r.stateSlug}/${r.citySlug}`, (r) => ({ stateSlug: r.stateSlug, stateName: r.stateName, citySlug: r.citySlug, cityName: r.cityName })),
+      photographers: new Set(rows.map((r) => r.photographer)).size,
+      from: rows.length ? Math.min(...rows.map((r) => num(r.from))) : null,
+    };
+  });
+}
+
 // ---------- Photographer profile + service page ----------
 export type PackageDetail = {
   id: string; level: Level; name: string; basePrice: number; offerPrice: number;

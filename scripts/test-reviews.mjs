@@ -29,7 +29,8 @@ try {
     const [svc2] = await tx`insert into services (name, slug) values ('RV Svc2', 'rv-svc2-zz') returning id`;
     const [ph] = await tx`insert into photographers (user_id, business_name, slug, status) values (${phUser.id}, 'RV Photog', 'rv-photog-zz', 'approved') returning id`;
     const [ph2] = await tx`insert into photographers (user_id, business_name, slug, status) values (${cust3.id}, 'RV Pending', 'rv-pend-zz', 'pending') returning id`;
-    const [pk] = await tx`insert into packages (photographer_id, service_id, level, name, price, base_price, offer_price) values (${ph.id}, ${svc.id}, 'basic', 'B', 100, 100, 100) returning id`;
+    const [pk] = await tx`insert into packages (photographer_id, service_id, level, name, price, base_price, offer_price) values (${ph.id}, ${svc.id}, 'basic', 'B', 1999, 1999, 1999) returning id`;
+    const [pkOther] = await tx`insert into packages (photographer_id, service_id, level, name, price, base_price, offer_price) values (${ph.id}, ${svc2.id}, 'basic', 'B2', 1999, 1999, 1999) returning id`;
     for (let i = 0; i < 3; i++) await tx`insert into package_images (package_id, image_url) values (${pk.id}, ${"https://x.test/" + i})`;
     await tx`update packages set status = 'published' where id = ${pk.id}`;
 
@@ -38,8 +39,8 @@ try {
       await tx.unsafe(`set local role ${uid ? "authenticated" : "anon"}`);
     };
     const reset = () => tx`reset role`;
-    const ins = (uid, f, status = "pending") => tx`insert into service_reviews (reviewer_user_id, photographer_id, service_id, rating, title, review_text, status)
-      values (${uid}, ${f.ph ?? ph.id}, ${f.svc ?? svc.id}, ${f.rating}, ${f.title ?? null}, ${f.text ?? null}, ${status}) returning id, status, reviewer_name`;
+    const ins = (uid, f, status = "pending") => tx`insert into service_reviews (reviewer_user_id, photographer_id, service_id, package_id, rating, title, review_text, status)
+      values (${uid}, ${f.ph ?? ph.id}, ${f.svc ?? svc.id}, ${f.pk === undefined ? pk.id : f.pk}, ${f.rating}, ${f.title ?? null}, ${f.text ?? null}, ${status}) returning id, status, reviewer_name`;
 
     // --- customer submission, optional fields, pending default ---
     await as(cust.id);
@@ -64,6 +65,10 @@ try {
     check("customer cannot insert as approved", !!(await throws(tx, () => ins(cust.id, { rating: 5 }, "approved"))));
     check("customer cannot insert for another user", !!(await throws(tx, () => ins(cust2.id, { rating: 5 }))));
     check("customer cannot review unpublished service", !!(await throws(tx, () => ins(cust.id, { rating: 5, svc: svc2.id }))));
+    check("customer cannot review without a package", !!(await throws(tx, () => ins(cust.id, { rating: 5, pk: null }))));
+    check("customer cannot review package of another service", !!(await throws(tx, () => ins(cust.id, { rating: 5, svc: svc.id, pk: pkOther.id }))));
+    check("customer cannot review unpublished package", !!(await throws(tx, () => ins(cust.id, { rating: 5, svc: svc2.id, pk: pkOther.id }))));
+    check("customer cannot change own role", !!(await throws(tx, () => tx`update auth.users set raw_app_meta_data = '{"role":"admin"}' where id = ${cust.id}`)));
     check("customer cannot review non-approved photographer", !!(await throws(tx, () => ins(cust.id, { rating: 5, ph: ph2.id }))));
     check("customer cannot set reviewed_by", !!(await throws(tx, () => tx`insert into service_reviews (reviewer_user_id, photographer_id, service_id, rating, reviewed_by) values (${cust.id}, ${ph.id}, ${svc.id}, 5, ${cust.id})`)));
     const up = await tx`update service_reviews set status = 'approved' where id = ${r1.id} returning id`.catch(() => []);

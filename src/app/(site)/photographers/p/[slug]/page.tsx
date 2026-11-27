@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
 import { JsonLd } from "@/components/JsonLd";
-import { profileJsonLd, serviceJsonLd } from "@/lib/jsonld";
+import { breadcrumbJsonLd, profileJsonLd, serviceJsonLd } from "@/lib/jsonld";
 import { PortfolioGrid, ProfileHeader } from "@/components/ProfileHeader";
 import { Reviews } from "@/components/Reviews";
 import { TierCards } from "@/components/TierCards";
@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: PageProps<"/photographers/p/[
   const offers = p.services.map((s) => s.name).join(", ");
   return pageMetadata({
     path: `/photographers/p/${p.slug}`,
-    title: `${p.name} – smartphone photographer${place ? ` in ${place}` : ""}`,
+    title: `${p.name} – smartphone photographer${p.city || p.state ? ` in ${p.city ?? p.state}` : ""}`,
     description: p.about
       ? clip(p.about)
       : `${p.name} is a smartphone photographer${place ? ` in ${place}` : ""}${offers ? ` offering ${offers}` : ""}. View packages and portfolio.`,
@@ -49,11 +49,23 @@ async function Profile({ params, searchParams }: Pick<PageProps<"/photographers/
   const current = p.services.find((s) => s.slug === wanted) ?? p.services[0];
   const offer = current ? await getProfileService(slug, current.slug) : null;
   const contact = { name: p.name, phone: p.phone, whatsapp: p.whatsapp };
+  // Location pages exist only for an active state + city (getProfile drops inactive ones).
+  const statePath = p.stateSlug ? `/photographers/${p.stateSlug}` : null;
+  const cityPath = statePath && p.citySlug ? `${statePath}/${p.citySlug}` : null;
+  const crumbs = [
+    { name: "Photographers", path: "/photographers" },
+    ...(statePath && p.state ? [{ name: p.state, path: statePath }] : []),
+    ...(cityPath && p.city ? [{ name: p.city, path: cityPath }] : []),
+    { name: p.name, path: `/photographers/p/${p.slug}` },
+  ];
 
   return (
     <article>
-      <JsonLd data={profileJsonLd(p)} />
-      {offer && <JsonLd data={serviceJsonLd(p, offer)} />}
+      <JsonLd data={{ "@graph": [profileJsonLd(p), ...(offer ? [serviceJsonLd(p, offer)] : []), breadcrumbJsonLd(crumbs)] }} />
+      <nav aria-label="Breadcrumb" className="container-page py-3 text-sm text-muted">
+        {crumbs.slice(0, -1).map((c) => <span key={c.path}><Link href={c.path} className="hover:underline">{c.name}</Link> / </span>)}
+        {p.name}
+      </nav>
       <ProfileHeader p={p} subtitle={current?.name} intro={p.about} />
       <div className="container-page">
         {p.services.length > 1 && (
@@ -78,6 +90,15 @@ async function Profile({ params, searchParams }: Pick<PageProps<"/photographers/
         )}
         {offer && <PortfolioGrid videos={offer.videos} images={offer.portfolio} title={`${offer.service.name} portfolio`} empty={`No ${offer.service.name.toLowerCase()} portfolio images yet.`} />}
         {offer && <div className="pb-4"><Reviews photographerId={p.id} serviceId={offer.service.id} targets={offer.reviewTargets} path={serviceHref(p.slug, offer.service.slug)} reviews={offer.reviews} /></div>}
+        {cityPath && (
+          <nav aria-labelledby="more-title" className="mt-12 border-t border-line pt-8">
+            <h2 id="more-title" className="text-base font-bold">More photographers in {p.city}</h2>
+            <ul className="mt-3 flex flex-wrap gap-2 text-sm">
+              {p.services.map((x) => <li key={x.slug}><Link href={`${cityPath}/${x.slug}`} className="rounded-md border border-line px-3 py-1.5 font-medium hover:border-ink">{x.name} photographers in {p.city}</Link></li>)}
+              <li><Link href={cityPath} className="rounded-md border border-line px-3 py-1.5 font-medium hover:border-ink">All photographers in {p.city}</Link></li>
+            </ul>
+          </nav>
+        )}
       </div>
     </article>
   );

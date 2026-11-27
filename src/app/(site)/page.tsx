@@ -12,15 +12,15 @@ import { PhotographerCard } from "@/components/PhotographerCard";
 import { readFilters, type SP } from "@/components/Listing";
 import { getBanner, getFeaturedPhotographers, getFilterOptions, getHiddenSections, getLocationStrip, getServiceShowcase, getStatesWithCounts, type Filters } from "@/lib/public";
 import type { HomeSectionKey } from "@/lib/home-sections";
-import { isFiltered, pageMetadata, shareImage } from "@/lib/seo";
+import { andList, isFiltered, pageMetadata, shareImage } from "@/lib/seo";
 
 const HERO_TITLE = "Beautiful moments, shot on smartphones.";
+const HERO_FALLBACK_H1 = "Smartphone photographers in India";
 const HERO_TEXT = "Discover photographers across India and compare packages for weddings, pre-weddings and more.";
 
 export async function generateMetadata({ searchParams }: PageProps<"/">): Promise<Metadata> {
   const [filters, banner, { services }] = await Promise.all([readFilters(searchParams), getBanner(), getFilterOptions()]);
-  const names = services.slice(0, 3).map((s) => s.name.toLowerCase());
-  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+  const list = andList(services.slice(0, 3).map((s) => s.name.toLowerCase()));
   return pageMetadata({
     path: "/",
     absoluteTitle: true,
@@ -38,7 +38,8 @@ export default function Home({ searchParams }: PageProps<"/">) {
     <>
       <JsonLd data={homeJsonLd()} />
       <Suspense fallback={<div className="h-[380px] bg-ink sm:h-[480px]" />}>
-        <Show k="banner"><Hero /></Show>
+        {/* The page keeps one h1 even when the admin hides the banner. */}
+        <Show k="banner" fallback={<h1 className="container-page heading-page pt-10">{HERO_FALLBACK_H1}</h1>}><Hero /></Show>
       </Suspense>
 
       <Suspense>
@@ -93,8 +94,8 @@ export default function Home({ searchParams }: PageProps<"/">) {
 }
 
 /** Renders its children unless the admin switched this homepage section off. */
-async function Show({ k, children }: { k: HomeSectionKey; children: ReactNode }) {
-  return (await getHiddenSections()).has(k) ? null : children;
+async function Show({ k, children, fallback = null }: { k: HomeSectionKey; children: ReactNode; fallback?: ReactNode }) {
+  return (await getHiddenSections()).has(k) ? fallback : children;
 }
 
 async function Hero() {
@@ -142,12 +143,14 @@ async function ServiceSections({ searchParams }: { searchParams: SP }) {
 async function ServiceSection({ name, slug, filters }: { name: string; slug: string; filters: Filters }) {
   const items = await getServiceShowcase({ ...filters, service: slug });
   if (!items.length) return null;
-  const q = new URLSearchParams(Object.entries({ ...filters, service: slug, level: undefined }).filter(([, v]) => v) as [string, string][]).toString();
+  // Unfiltered: the indexable service page. Filtered: the (noindex) search view that keeps the visitor's filters.
+  const narrowed = Object.entries({ ...filters, service: undefined, level: undefined }).filter(([, v]) => v) as [string, string][];
+  const viewAll = narrowed.length ? `/search?${new URLSearchParams([...narrowed, ["service", slug]])}` : `/services/${slug}`;
   return (
     <section className="container-page pt-12">
       <div className="flex items-end justify-between">
         <h2 className="heading-section">{name} Packages</h2>
-        <Link href={`/search?${q}`} className="text-sm font-semibold underline">View all</Link>
+        <Link href={viewAll} className="text-sm font-semibold underline" aria-label={`View all ${name.toLowerCase()} packages`}>View all</Link>
       </div>
       <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{items.map((k) => <PackageCard key={k.id} pkg={k} />)}</div>
     </section>
